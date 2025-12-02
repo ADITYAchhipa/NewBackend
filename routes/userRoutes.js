@@ -6,6 +6,7 @@ const userRouter = express.Router();
 console.log("User Routes Loaded");
 userRouter.post('/register', register);  //tested
 userRouter.post('/ForgotPassword',forgot); //tested
+userRouter.post('/forgot', forgot); // alias for lowercase route
 userRouter.post('/login', login); //tested
 
 userRouter.post('/otp', otp );
