@@ -1,0 +1,38 @@
+login popup or failed login popup 
+
+cover page in profile section and connect it with /user/updateBanner and create popu
+
+
+profile pic section on profile is not working and connect it with path /user/updateProfileImage and create popu
+
+
+the edit section in profile is not looking good
+
+create validation in edit profile page and connect it with backend path /user/updateDetails and create popu
+
+
+wallet section is looking disgusting  (overview)
+
+
+when you press the search bar in home page it is redirecting to  search page but in the boottom logos insted of search icon home icon is selected
+
+
+create a list of achivements and the backend will give only the value like (Early adopter , top reviewer , top seller) how the card will look decide it and create something for it
+
+
+inside reset password of profile section all the checks are not working properly when we press the eye button only then it show which check are passed
+
+
+
+
+
+
+
+
+Aditya
+
+create achivements section in data base
+
+switch db url before push
+
+

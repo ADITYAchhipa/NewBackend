@@ -11,11 +11,11 @@ const getFeaturedProperties = async (limit = 10) => {
       status: 'active',
       available: true
     })
-    .limit(limit)
-    .select('-__v')
-    .populate('ownerId', 'name avatar phone')
-    .sort({ createdAt: -1 }) // Most recent first
-    .lean();
+      .limit(limit)
+      .select('-__v')
+      .populate('ownerId', 'name avatar phone')
+      .sort({ createdAt: -1 }) // Most recent first
+      .lean();
 
     return properties;
   } catch (error) {
@@ -34,11 +34,11 @@ const getFeaturedVehicles = async (limit = 10) => {
       status: 'active',
       available: true
     })
-    .limit(limit)
-    .select('-__v')
-    .populate('ownerId', 'name avatar phone')
-    .sort({ createdAt: -1 }) // Most recent first
-    .lean();
+      .limit(limit)
+      .select('-__v')
+      .populate('ownerId', 'name avatar phone')
+      .sort({ createdAt: -1 }) // Most recent first
+      .lean();
 
     return vehicles;
   } catch (error) {
@@ -86,20 +86,80 @@ export const getFeaturedListings = async (req, res) => {
 };
 
 /**
- * Get only featured properties
- * GET /api/featured/properties
+ * Get only featured properties with pagination and filtering
+ * GET /api/featured/properties?page=1&limit=10&category=Apartments&excludeIds=id1,id2
  */
 export const getFeaturedPropertiesOnly = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const properties = await getFeaturedProperties(limit);
+    const category = req.query.category;
+    const excludeIds = req.query.excludeIds ? req.query.excludeIds.split(',') : [];
+
+    // Build match criteria
+    const matchCriteria = {
+      Featured: true,
+      status: 'active',
+      available: true
+    };
+
+    // Add category filter if provided and not 'all'
+    // Category comes in plural form from frontend (e.g., "Apartments")
+    if (category && category.toLowerCase() !== 'all') {
+      // Remove trailing 's' to match backend format if needed
+      let categoryValue = category;
+      if (category.endsWith('s') && category !== 'Others') {
+        categoryValue = category.slice(0, -1);
+      }
+      matchCriteria.category = categoryValue;
+    }
+
+    // Exclude already-seen properties
+    if (excludeIds.length > 0) {
+      matchCriteria._id = { $nin: excludeIds };
+    }
+
+    // Use aggregation for random ordering and pagination
+    const pipeline = [
+      { $match: matchCriteria },
+      { $sample: { size: limit * 3 } }, // Sample more than needed for better randomization
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'ownerId',
+          foreignField: '_id',
+          as: 'owner'
+        }
+      },
+      {
+        $unwind: {
+          path: '$owner',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          __v: 0,
+          'owner.password': 0,
+          'owner.__v': 0
+        }
+      }
+    ];
+
+    const properties = await Property.aggregate(pipeline);
+
+    // Get total count for hasMore flag
+    const totalCount = await Property.countDocuments(matchCriteria);
+    const hasMore = (page * limit) < totalCount;
 
     res.json({
       success: true,
-      data: {
-        properties,
-        total: properties.length
-      },
+      results: properties,
+      page,
+      limit,
+      total: totalCount,
+      hasMore,
       message: 'Featured properties fetched successfully'
     });
 

@@ -6,26 +6,51 @@ import Property from '../models/property.js';
 export const searchItems = async (req, res) => {
   try {
     console.log('🏠 Fetching featured properties...');
-    let { category } = req.query;
-   
-    console.log(category)
-    let results = [];
+    let { category, page = 1, limit = 10, excludeIds = '' } = req.query;
 
-    // Get all featured properties (removed limit to show all)
-    if(!category)
-    results = await Property.find({Featured: true});
-  else{
-     category=category.slice(0,-1).toLowerCase()
-     console.log(category)  
-    results = await Property.find({Featured: true,category:category});
-  }
+    // Parse excludeIds (comma-separated string to array)
+    const excludeIdsArray = excludeIds ? excludeIds.split(',').filter(id => id) : [];
 
-    
-    console.log(`✅ Found ${results.length} featured properties`);
+    // Build query filter
+    const filter = {
+      Featured: true,
+      available: true,  // Only available properties
+      status: 'active',  // Only active properties
+      _id: { $nin: excludeIdsArray }  // Exclude already-fetched IDs
+    };
+
+    // Add category filter if provided
+    if (category) {
+      category = category.slice(0, -1).toLowerCase();
+      filter.category = category;
+    }
+
+    console.log('Query filter:', filter);
+
+    // Count total matching documents
+    const total = await Property.countDocuments(filter);
+
+    // Calculate pagination
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // Fetch properties with random ordering
+    // Using MongoDB aggregation for better randomization
+    const results = await Property.aggregate([
+      { $match: filter },
+      { $sample: { size: Math.min(total - excludeIdsArray.length, limitNum) } }  // Random sample
+    ]);
+
+    console.log(`✅ Found ${results.length} featured properties (page ${pageNum}, excluded: ${excludeIdsArray.length})`);
 
     res.status(200).json({
       success: true,
       count: results.length,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      hasMore: (skip + results.length) < total,
       results
     });
 
@@ -55,9 +80,9 @@ export const getPropertyById = async (req, res) => {
     property.meta.views = (property.meta.views || 0) + 1;
     await property.save();
 
-    return res.json({ 
-      success: true, 
-      property 
+    return res.json({
+      success: true,
+      property
     });
 
   } catch (error) {
