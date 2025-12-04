@@ -20,11 +20,8 @@ when you press the search bar in home page it is redirecting to  search page but
 create a list of achivements and the backend will give only the value like (Early adopter , top reviewer , top seller) how the card will look decide it and create something for it
 
 
-inside reset password of profile section all the checks are not working properly when we press the eye button only then it show which check are passed
 
-
-
-
+scroll in home page
 
 
 
@@ -36,4 +33,16 @@ create achivements section in data base
 switch db url before push
 
 
-i am done
+
+4-12-25
+
+
+if the backend is not runing handle the errror revealing data
+
+if a person using 2 fingeres to scroll solve this 
+
+in the vechile section after sedan the page is flickering 
+
+
+remove the clear all button form wishlist
+

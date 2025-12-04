@@ -1,5 +1,6 @@
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
+import mongoose from 'mongoose';
 
 /**
  * Get featured properties
@@ -94,7 +95,7 @@ export const getFeaturedPropertiesOnly = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const category = req.query.category;
-    const excludeIds = req.query.excludeIds ? req.query.excludeIds.split(',') : [];
+    const excludeIdsParam = req.query.excludeIds ? req.query.excludeIds.split(',') : [];
 
     // Build match criteria
     const matchCriteria = {
@@ -111,18 +112,25 @@ export const getFeaturedPropertiesOnly = async (req, res) => {
       if (category.endsWith('s') && category !== 'Others') {
         categoryValue = category.slice(0, -1);
       }
-      matchCriteria.category = categoryValue;
+      // Convert to lowercase to match database schema (apartment, house, villa, etc.)
+      matchCriteria.category = categoryValue.toLowerCase();
     }
 
-    // Exclude already-seen properties
-    if (excludeIds.length > 0) {
-      matchCriteria._id = { $nin: excludeIds };
+    // Exclude already-seen properties - convert string IDs to ObjectIds
+    if (excludeIdsParam.length > 0) {
+      const excludeIds = excludeIdsParam
+        .filter(id => mongoose.Types.ObjectId.isValid(id))
+        .map(id => new mongoose.Types.ObjectId(id));
+      if (excludeIds.length > 0) {
+        matchCriteria._id = { $nin: excludeIds };
+      }
     }
 
-    // Use aggregation for random ordering and pagination
+    // Use aggregation with consistent sorting instead of $sample to prevent duplicates
+    // Sort by _id for deterministic ordering while maintaining variety
     const pipeline = [
       { $match: matchCriteria },
-      { $sample: { size: limit * 3 } }, // Sample more than needed for better randomization
+      { $sort: { _id: 1 } }, // Deterministic sorting
       { $limit: limit },
       {
         $lookup: {
@@ -151,7 +159,7 @@ export const getFeaturedPropertiesOnly = async (req, res) => {
 
     // Get total count for hasMore flag
     const totalCount = await Property.countDocuments(matchCriteria);
-    const hasMore = (page * limit) < totalCount;
+    const hasMore = properties.length === limit && (excludeIdsParam.length + limit) < totalCount;
 
     res.json({
       success: true,

@@ -17,6 +17,8 @@ import propertyRouter from './routes/propertyRoutes.js';
 import vehicleRouter from './routes/vehicleRoutes.js';
 import AddItems from './routes/AddItems.js';
 import disputeRouter from './routes/disputeRoutes.js';
+import visitedRoutes from './routes/visitedRoutes.js';
+import recommendedRoutes from './routes/recommendedRoutes.js';
 const app = express();
 
 
@@ -37,18 +39,20 @@ app.use(cookieParser());
 
 // Routes
 app.get('/', (req, res) => res.send('Hello World!'));
-app.use('/api/seller',sellerRoutes)
-app.use('/api/user',userRouter)
-app.use('/api/search',searchrouter)
-app.use('/api/notifications',notificationRouter)
-app.use('/api/nearby',nearbyRouter)
-app.use('/api/featured',featuredRouter)
-app.use('/api/favourite',favouriteRouter)
-app.use('/api/review',reviewRouter)
-app.use('/api/property',propertyRouter)
-app.use('/api/vehicle',vehicleRouter)
-app.use('/api/addItems',AddItems)
-app.use('/api/disputes',disputeRouter)
+app.use('/api/seller', sellerRoutes)
+app.use('/api/user', userRouter)
+app.use('/api/search', searchrouter)
+app.use('/api/notifications', notificationRouter)
+app.use('/api/nearby', nearbyRouter)
+app.use('/api/featured', featuredRouter)
+app.use('/api/favourite', favouriteRouter)
+app.use('/api/review', reviewRouter)
+app.use('/api/property', propertyRouter)
+app.use('/api/vehicle', vehicleRouter)
+app.use('/api/addItems', AddItems)
+app.use('/api/disputes', disputeRouter)
+app.use('/api/user/visited', visitedRoutes); // Recently visited properties
+app.use('/api/recommended', recommendedRoutes); // Personalized recommendations
 
 
 app.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));

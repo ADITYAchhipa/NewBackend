@@ -13,7 +13,7 @@ const UserSchema = new Schema({
   // Profile & KYC
   avatar: String,
   banner: String,
-  bio: String,
+
 
   loginAttempts: { type: Number, default: 0 },
   reviews: { type: Number, default: 0 },
@@ -22,6 +22,16 @@ const UserSchema = new Schema({
   favourites: {
     properties: [{ type: Schema.Types.ObjectId, ref: 'Property' }],
     vehicles: [{ type: Schema.Types.ObjectId, ref: 'Vehicle' }]
+  },
+
+  // Recently visited properties (LRU cache, max 20)
+  // Controller handles limiting to 20 items via slice
+  visitedProperties: {
+    type: [{
+      propertyId: { type: Schema.Types.ObjectId, ref: 'Property', required: true },
+      visitedAt: { type: Date, default: Date.now }
+    }],
+    default: []
   },
 
   // Bookings tracking

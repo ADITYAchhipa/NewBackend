@@ -13,7 +13,8 @@ import sendOtp from '../config/otp.js'; // Import the sendOtp function
 export const register = async (req, res) => {
     try {
         console.log(req.body)
-        const { name, email, password, phone, ReferralCode } = req.body;
+        const { name, email, password, phone } = req.body;
+        const { referralCode } = req.body || '';
         if (!name || !email || !password || !phone) {
             console.log("Missing Details");
             return res.json({ success: false, message: "Missing Details" })
@@ -36,13 +37,13 @@ export const register = async (req, res) => {
         const hashedPasword = await bcrypt.hash(password, 10)
 
         const user = await User.create({ name, email, password: hashedPasword, phone, ReferralCode: referralCode })
-
+        console.log("User registered:", user);
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 
         res.cookie('token', token, {
-            httpOnly: true,  // prevent js to acccess cookies
+            httpOnly: true,  // prevent js to access cookies
             secure: process.env.NODE_ENV === 'production', // use secure cookie in production
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', //csrf protection
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // lax allows cross-origin GET requests
             maxAge: 7 * 24 * 60 * 60 * 1000, //cookie expiration date
         })
         console.log("Token stored in cookie");
@@ -77,10 +78,12 @@ export const login = async (req, res) => {
         if (!email || !password)
             return res.json({ success: false, message: "Missing Details" })
         console.log("Login function called");
+        console.log(email + " " + password);
         const user = await User.findOne({ email }).select('+password');
+        console.log(user);
         if (!user)
             return res.json({ success: false, message: "Invalid email or password" })
-        console.log(password+" "+user.password+" "+(await bcrypt.compare(password, user.password)));
+        console.log(password + " " + user.password + " " + (await bcrypt.compare(password, user.password)));
         const isMatch = await bcrypt.compare(password, user.password);
 
         if (!isMatch && false)
@@ -89,9 +92,9 @@ export const login = async (req, res) => {
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 
         res.cookie('token', token, {
-            httpOnly: true,  // prevent js to acccess cookies
+            httpOnly: true,  // prevent js to access cookies
             secure: process.env.NODE_ENV === 'production', // use secure cookie in production
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', //csrf protection
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // lax allows cross-origin GET requests
             maxAge: 7 * 24 * 60 * 60 * 1000, //cookie expiration date
         })
         return res.json({ success: true, token, user: { email: user.email, name: user.name, phone: user.phone, favourites: user.favourites, bookings: user.bookings, country: user.Country } })

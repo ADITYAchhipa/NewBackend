@@ -10,6 +10,7 @@ userRouter.post('/ForgotPassword', forgot); //tested
 userRouter.post('/forgot', forgot); // alias for lowercase route
 userRouter.post('/login', login); //tested
 userRouter.post('/ChangePasswordProfile', authUser, changePasswordProfile);
+userRouter.post('/resetPassword', authUser, resetPassword);
 userRouter.post('/updateCountry', authUser, updateCountry);
 userRouter.post('/updateBanner', authUser, upload.single('banner'), updateBanner);
 userRouter.post('/updateProfileImage', authUser, upload.single('profile'), updateProfileImage);

@@ -355,3 +355,209 @@ export const getUserFavouriteVehicles = async (req, res) => {
     });
   }
 };
+
+/**
+ * Toggle property favourite status
+ * POST /api/favourite/toggle/property/:id
+ * Returns whether the property is now favourited or not
+ */
+export const togglePropertyFavourite = async (req, res) => {
+  try {
+    const userId = req.userId; // From authUser middleware
+    const propertyId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    // Check if property exists
+    const property = await Property.findById(propertyId);
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: 'Property not found'
+      });
+    }
+
+    // Get current user favourites
+    const user = await User.findById(userId).select('favourites');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if already in favourites
+    const isCurrentlyFavourite = user.favourites?.properties?.some(
+      id => id.toString() === propertyId
+    );
+
+    let updatedUser;
+    let isFavourite;
+
+    if (isCurrentlyFavourite) {
+      // Remove from favourites
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $pull: { 'favourites.properties': propertyId } },
+        { new: true, select: 'favourites' }
+      );
+      isFavourite = false;
+    } else {
+      // Add to favourites
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $addToSet: { 'favourites.properties': propertyId } },
+        { new: true, select: 'favourites' }
+      );
+      isFavourite = true;
+    }
+
+    res.json({
+      success: true,
+      message: isFavourite ? 'Property added to favourites' : 'Property removed from favourites',
+      data: {
+        isFavourite,
+        propertyId,
+        favourites: updatedUser.favourites
+      }
+    });
+
+  } catch (error) {
+    console.error('Error toggling property favourite:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to toggle property favourite'
+    });
+  }
+};
+
+/**
+ * Toggle vehicle favourite status
+ * POST /api/favourite/toggle/vehicle/:id
+ * Returns whether the vehicle is now favourited or not
+ */
+export const toggleVehicleFavourite = async (req, res) => {
+  try {
+    const userId = req.userId; // From authUser middleware
+    const vehicleId = req.params.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    // Check if vehicle exists
+    const vehicle = await Vehicle.findById(vehicleId);
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: 'Vehicle not found'
+      });
+    }
+
+    // Get current user favourites
+    const user = await User.findById(userId).select('favourites');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Check if already in favourites
+    const isCurrentlyFavourite = user.favourites?.vehicles?.some(
+      id => id.toString() === vehicleId
+    );
+
+    let updatedUser;
+    let isFavourite;
+
+    if (isCurrentlyFavourite) {
+      // Remove from favourites
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $pull: { 'favourites.vehicles': vehicleId } },
+        { new: true, select: 'favourites' }
+      );
+      isFavourite = false;
+    } else {
+      // Add to favourites
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $addToSet: { 'favourites.vehicles': vehicleId } },
+        { new: true, select: 'favourites' }
+      );
+      isFavourite = true;
+    }
+
+    res.json({
+      success: true,
+      message: isFavourite ? 'Vehicle added to favourites' : 'Vehicle removed from favourites',
+      data: {
+        isFavourite,
+        vehicleId,
+        favourites: updatedUser.favourites
+      }
+    });
+
+  } catch (error) {
+    console.error('Error toggling vehicle favourite:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to toggle vehicle favourite'
+    });
+  }
+};
+
+/**
+ * Get user's favourite IDs only (lightweight for app startup)
+ * GET /api/favourite/ids
+ */
+export const getUserFavouriteIds = async (req, res) => {
+  try {
+    const userId = req.userId; // From authUser middleware
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    const user = await User.findById(userId).select('favourites');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Return just the IDs as strings
+    const propertyIds = (user.favourites?.properties || []).map(id => id.toString());
+    const vehicleIds = (user.favourites?.vehicles || []).map(id => id.toString());
+
+    res.json({
+      success: true,
+      data: {
+        properties: propertyIds,
+        vehicles: vehicleIds,
+        all: [...propertyIds, ...vehicleIds]
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting favourite IDs:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get favourite IDs'
+    });
+  }
+};
