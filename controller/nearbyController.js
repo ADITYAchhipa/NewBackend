@@ -180,11 +180,21 @@ const findNearbyProperties = async (latitude, longitude, maxDistance = 10000, ci
 /**
  * Find vehicles near user location
  */
-const findNearbyVehicles = async (latitude, longitude, maxDistance = 10000, city, debug = false) => {
+const findNearbyVehicles = async (latitude, longitude, maxDistance = 10000, city, category, debug = false) => {
   try {
     const baseFilter = { status: 'active', available: true };
     if (city) {
       baseFilter['location.city'] = new RegExp(`^${escapeRegExp(city)}$`, 'i');
+    }
+
+    // Add category filter for vehicleType
+    if (category && category.toLowerCase() !== 'all') {
+      let categoryValue = category.toLowerCase();
+      // Handle plural forms: 'cars' -> 'car', 'bikes' -> 'bike'
+      if (categoryValue.endsWith('s')) {
+        categoryValue = categoryValue.slice(0, -1);
+      }
+      baseFilter.vehicleType = categoryValue;
     }
 
     if (debug) {
@@ -193,6 +203,7 @@ const findNearbyVehicles = async (latitude, longitude, maxDistance = 10000, city
         longitude,
         maxDistance,
         city,
+        category,
         baseFilter
       });
     }
@@ -387,17 +398,18 @@ export const getNearbyListings = async (req, res) => {
       console.log('[NEARBY] Resolved coords/city', { latitude, longitude, city, source: coords.source });
     }
 
-    // Enforce a maximum search radius of 10km
-    const maxDistanceKm = Math.min(parseFloat(req.query.maxDistance) || 10, 10); // cap at 10km
-    const maxDistance = maxDistanceKm * 1000; // Convert to meters
-
-    // Optional: Get type filter (properties, vehicles, or both)
+    // Enforce a maximum search radius of 10km for properties, 30km for vehicles
     const type = req.query.type || 'all'; // 'properties', 'vehicles', or 'all'
+    const category = req.query.category || 'all'; // Category filter
+    const maxDistanceKm = type === 'vehicles'
+      ? Math.min(parseFloat(req.query.maxDistance) || 30, 30) // 30km for vehicles
+      : Math.min(parseFloat(req.query.maxDistance) || 10, 10); // 10km for properties
+    const maxDistance = maxDistanceKm * 1000; // Convert to meters
 
     // Step 2: Find nearby properties and vehicles in parallel
     const [properties, vehicles] = await Promise.all([
       type === 'vehicles' ? [] : findNearbyProperties(latitude, longitude, maxDistance, city, debug),
-      type === 'properties' ? [] : findNearbyVehicles(latitude, longitude, maxDistance, city, debug)
+      type === 'properties' ? [] : findNearbyVehicles(latitude, longitude, maxDistance, city, category, debug)
     ]);
 
     const filteredProps = city ? properties.filter(p => cityEquals(p.city, city)) : properties;
@@ -485,11 +497,12 @@ export const getNearbyVehicles = async (req, res) => {
     const coords = await resolveCoordinates(req);
     const { latitude, longitude } = coords;
     const city = (await resolveCityForSearch(req, coords)) || undefined;
-    const maxDistanceKm = Math.min(parseFloat(req.query.maxDistance) || 10, 10);
+    const category = req.query.category || 'all'; // Category filter
+    const maxDistanceKm = Math.min(parseFloat(req.query.maxDistance) || 30, 30); // 30km max for vehicles
     const maxDistance = maxDistanceKm * 1000;
     const debug = (process.env.NEARBY_DEBUG === '1') || (req.query.debug === '1');
 
-    const vehicles = await findNearbyVehicles(latitude, longitude, maxDistance, city, debug);
+    const vehicles = await findNearbyVehicles(latitude, longitude, maxDistance, city, category, debug);
     const filteredVehs = city ? vehicles.filter(v => cityEquals(v?.location?.city, city)) : vehicles;
 
     res.json({

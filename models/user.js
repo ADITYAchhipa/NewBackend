@@ -34,6 +34,15 @@ const UserSchema = new Schema({
     default: []
   },
 
+  // Recently visited vehicles (LRU cache, max 20)
+  visitedVehicles: {
+    type: [{
+      vehicleId: { type: Schema.Types.ObjectId, ref: 'Vehicle', required: true },
+      visitedAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+
   // Bookings tracking
   bookings: {
     booked: [{ type: Schema.Types.ObjectId, ref: 'Booking' }],

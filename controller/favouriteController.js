@@ -561,3 +561,127 @@ export const getUserFavouriteIds = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get user's favourites with sorting options
+ * GET /api/favourite/sorted?type=all|properties|vehicles&sort=date|priceAsc|priceDesc|rating
+ * 
+ * Query Parameters:
+ * - type: Filter by type (all, properties, vehicles) - default: all
+ * - sort: Sort order (date, priceAsc, priceDesc, rating) - default: date
+ * 
+ * Sort Options:
+ * - date: Most recently added first (array order reversed)
+ * - priceAsc: Price low to high (monthly for properties, perDay for vehicles)
+ * - priceDesc: Price high to low
+ * - rating: Highest rated first
+ */
+export const getFavouritesWithSort = async (req, res) => {
+  try {
+    const userId = req.user?.id || req.userId;
+    const type = req.query.type || 'all'; // all, properties, vehicles
+    const sort = req.query.sort || 'date'; // date, priceAsc, priceDesc, rating
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    const user = await User.findById(userId)
+      .populate({
+        path: 'favourites.properties',
+        select: '-__v',
+        populate: { path: 'ownerId', select: 'name avatar phone' }
+      })
+      .populate({
+        path: 'favourites.vehicles',
+        select: '-__v',
+        populate: { path: 'ownerId', select: 'name avatar phone' }
+      })
+      .select('favourites');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    let properties = user.favourites?.properties || [];
+    let vehicles = user.favourites?.vehicles || [];
+    let results = [];
+
+    // Filter by type
+    if (type === 'properties') {
+      results = [...properties];
+    } else if (type === 'vehicles') {
+      results = [...vehicles];
+    } else {
+      // For 'all', combine both and mark their types
+      results = [
+        ...properties.map(p => ({ ...p.toObject(), itemType: 'property' })),
+        ...vehicles.map(v => ({ ...v.toObject(), itemType: 'vehicle' }))
+      ];
+    }
+
+    // Apply sorting
+    if (sort === 'date') {
+      // Most recent first - reverse array order (newest added = last in array)
+      results.reverse();
+    } else if (sort === 'priceAsc') {
+      // Price: Low to High
+      results.sort((a, b) => {
+        const priceA = a.itemType === 'property'
+          ? (a.pricing?.monthly || 0)
+          : (a.price?.perDay || 0);
+        const priceB = b.itemType === 'property'
+          ? (b.pricing?.monthly || 0)
+          : (b.price?.perDay || 0);
+        return priceA - priceB;
+      });
+    } else if (sort === 'priceDesc') {
+      // Price: High to Low
+      results.sort((a, b) => {
+        const priceA = a.itemType === 'property'
+          ? (a.pricing?.monthly || 0)
+          : (a.price?.perDay || 0);
+        const priceB = b.itemType === 'property'
+          ? (b.pricing?.monthly || 0)
+          : (b.price?.perDay || 0);
+        return priceB - priceA;
+      });
+    } else if (sort === 'rating') {
+      // Highest rated first
+      results.sort((a, b) => {
+        const ratingA = a.rating?.avg || a.rating || 0;
+        const ratingB = b.rating?.avg || b.rating || 0;
+        return ratingB - ratingA;
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        results,
+        type,
+        sort,
+        total: results.length,
+        counts: {
+          properties: properties.length,
+          vehicles: vehicles.length,
+          all: properties.length + vehicles.length
+        }
+      },
+      message: 'Favourites fetched successfully'
+    });
+
+  } catch (error) {
+    console.error('Error getting sorted favourites:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to get sorted favourites'
+    });
+  }
+};

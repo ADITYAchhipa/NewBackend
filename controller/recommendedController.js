@@ -1,6 +1,7 @@
 import User from '../models/user.js';
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
+import Booking from '../models/booking.js';
 
 // Simple in-memory cache with TTL
 const recommendationCache = new Map();
@@ -181,6 +182,7 @@ export const getRecommendedVehicles = async (req, res) => {
 
         const user = await User.findById(userId)
             .populate('favourites.vehicles')
+            .populate('visitedVehicles.vehicleId')
             .populate('bookings.booked')
             .populate('bookings.cancelled');
 
@@ -209,7 +211,21 @@ export const getRecommendedVehicles = async (req, res) => {
             recommendations.push(...bookings);
         }
 
-        // Step 3: Random fill (if < 20) - vehicles don't have visited tracking yet
+        // Step 3: Visited (if < 20)
+        if (recommendations.length < 20) {
+            try {
+                const visitedVehs = user.visitedVehicles || [];
+                if (visitedVehs.length > 0) {
+                    const visited = getVisitedVehiclesSorted(visitedVehs, usedIds);
+                    recommendations.push(...visited);
+                    console.log(`👀 [Recommended] Added ${visited.length} visited vehicles`);
+                }
+            } catch (visitError) {
+                console.warn('⚠️ [Recommended] Error processing visited vehicles:', visitError.message);
+            }
+        }
+
+        // Step 4: Random fill (if < 20)
         if (recommendations.length < 20) {
             const needed = 20 - recommendations.length;
             const random = await getRandomVehicles(usedIds, needed, category);
@@ -383,6 +399,27 @@ function getVisitedSorted(visitedArray, usedIds) {
 }
 
 /**
+ * Get visited vehicles (already sorted by most recent)
+ */
+function getVisitedVehiclesSorted(visitedArray, usedIds) {
+    if (!visitedArray || visitedArray.length === 0) return [];
+
+    const result = [];
+    for (const visit of visitedArray) {
+        const vehicle = visit.vehicleId;
+        if (!vehicle) continue;
+
+        const id = vehicle._id.toString();
+        if (!usedIds.has(id)) {
+            usedIds.add(id);
+            result.push(vehicle);
+        }
+    }
+
+    return result;
+}
+
+/**
  * Get random properties not already in usedIds
  */
 async function getRandomProperties(usedIds, count, category) {
@@ -447,8 +484,14 @@ async function getRandomVehicles(usedIds, count, category) {
         available: true
     };
 
+    // Filter by vehicleType for vehicles (not 'category')
     if (category && category.toLowerCase() !== 'all') {
-        query.category = category;
+        let categoryValue = category.toLowerCase();
+        // Handle plural forms: 'cars' -> 'car', 'bikes' -> 'bike'
+        if (categoryValue.endsWith('s')) {
+            categoryValue = categoryValue.slice(0, -1);
+        }
+        query.vehicleType = categoryValue;
     }
 
     const vehicles = await Vehicle.aggregate([
@@ -496,6 +539,8 @@ function filterByCategory(items, category) {
     categoryValue = categoryValue.toLowerCase();
 
     return items.filter(item => {
-        return item.category && item.category.toLowerCase() === categoryValue;
+        // For properties, use 'category'; for vehicles, use 'vehicleType'
+        const itemCategory = item.category || item.vehicleType;
+        return itemCategory && itemCategory.toLowerCase() === categoryValue;
     });
 }

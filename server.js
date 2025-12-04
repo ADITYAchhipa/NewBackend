@@ -18,6 +18,7 @@ import vehicleRouter from './routes/vehicleRoutes.js';
 import AddItems from './routes/AddItems.js';
 import disputeRouter from './routes/disputeRoutes.js';
 import visitedRoutes from './routes/visitedRoutes.js';
+import visitedVehiclesRoutes from './routes/visitedVehiclesRoutes.js';
 import recommendedRoutes from './routes/recommendedRoutes.js';
 const app = express();
 
@@ -52,6 +53,7 @@ app.use('/api/vehicle', vehicleRouter)
 app.use('/api/addItems', AddItems)
 app.use('/api/disputes', disputeRouter)
 app.use('/api/user/visited', visitedRoutes); // Recently visited properties
+app.use('/api/user/visited-vehicles', visitedVehiclesRoutes); // Recently visited vehicles
 app.use('/api/recommended', recommendedRoutes); // Personalized recommendations
 
 

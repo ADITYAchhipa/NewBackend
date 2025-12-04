@@ -181,20 +181,85 @@ export const getFeaturedPropertiesOnly = async (req, res) => {
 };
 
 /**
- * Get only featured vehicles
- * GET /api/featured/vehicles
+ * Get only featured vehicles with pagination and filtering
+ * GET /api/featured/vehicles?page=1&limit=10&search=cars&excludeIds=id1,id2
  */
 export const getFeaturedVehiclesOnly = async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
-    const vehicles = await getFeaturedVehicles(limit);
+    const search = req.query.search; // vehicleType filter
+    const excludeIdsParam = req.query.excludeIds ? req.query.excludeIds.split(',') : [];
+
+    // Build match criteria
+    const matchCriteria = {
+      Featured: true,
+      status: 'active',
+      available: true
+    };
+
+    // Add vehicleType filter if provided and not 'all'
+    // Search/category comes in plural form from frontend (e.g., "cars")
+    if (search && search.toLowerCase() !== 'all') {
+      // Remove trailing 's' to match backend enum (car, bike, van, scooter)
+      let vehicleType = search.toLowerCase();
+      if (vehicleType.endsWith('s')) {
+        vehicleType = vehicleType.slice(0, -1);
+      }
+      matchCriteria.vehicleType = vehicleType;
+    }
+
+    // Exclude already-seen vehicles - convert string IDs to ObjectIds
+    if (excludeIdsParam.length > 0) {
+      const excludeIds = excludeIdsParam
+        .filter(id => mongoose.Types.ObjectId.isValid(id))
+        .map(id => new mongoose.Types.ObjectId(id));
+      if (excludeIds.length > 0) {
+        matchCriteria._id = { $nin: excludeIds };
+      }
+    }
+
+    // Use aggregation with consistent sorting
+    const pipeline = [
+      { $match: matchCriteria },
+      { $sort: { _id: 1 } }, // Deterministic sorting
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'ownerId',
+          foreignField: '_id',
+          as: 'owner'
+        }
+      },
+      {
+        $unwind: {
+          path: '$owner',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          __v: 0,
+          'owner.password': 0,
+          'owner.__v': 0
+        }
+      }
+    ];
+
+    const vehicles = await Vehicle.aggregate(pipeline);
+
+    // Get total count for hasMore flag
+    const totalCount = await Vehicle.countDocuments(matchCriteria);
+    const hasMore = vehicles.length === limit && (excludeIdsParam.length + limit) < totalCount;
 
     res.json({
       success: true,
-      data: {
-        vehicles,
-        total: vehicles.length
-      },
+      results: vehicles, // Changed from data.vehicles to results
+      page,
+      limit,
+      total: totalCount,
+      hasMore,
       message: 'Featured vehicles fetched successfully'
     });
 

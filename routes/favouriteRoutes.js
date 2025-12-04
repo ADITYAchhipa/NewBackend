@@ -9,7 +9,8 @@ import {
   getUserFavouriteVehicles,
   togglePropertyFavourite,
   toggleVehicleFavourite,
-  getUserFavouriteIds
+  getUserFavouriteIds,
+  getFavouritesWithSort
 } from '../controller/favouriteController.js';
 import authUser from '../middleware/authUser.js';
 
@@ -24,6 +25,14 @@ router.use(authUser);
  * Returns: { properties: string[], vehicles: string[], all: string[] }
  */
 router.get('/ids', getUserFavouriteIds);
+
+/**
+ * GET /api/favourite/sorted
+ * Get favourites with sorting and filtering
+ * Query params: type (all|properties|vehicles), sort (date|priceAsc|priceDesc|rating)
+ * Returns: { results: [], type, sort, total, counts }
+ */
+router.get('/sorted', getFavouritesWithSort);
 
 /**
  * GET /api/favourite
