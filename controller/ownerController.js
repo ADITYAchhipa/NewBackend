@@ -1,6 +1,6 @@
 // controller/ownerController.js
 import Property from '../models/property.js';
-import Vehicle from '../models/Vehicle.js';
+import Vehicle from '../models/vehicle.js';
 
 /**
  * Get all listings (properties + vehicles) for the logged-in owner

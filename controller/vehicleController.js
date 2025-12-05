@@ -1,8 +1,6 @@
 // controller/vehicleController.js
+import mongoose from 'mongoose';
 import Vehicle from '../models/vehicle.js';
-
-
-
 
 
 export const searchItems = async (req, res) => {
@@ -10,8 +8,10 @@ export const searchItems = async (req, res) => {
     console.log('🚗 Fetching featured vehicles...');
     let { search, page = 1, limit = 10, excludeIds = '' } = req.query;
 
-    // Parse excludeIds (comma-separated string to array)
-    const excludeIdsArray = excludeIds ? excludeIds.split(',').filter(id => id) : [];
+    // Parse excludeIds (comma-separated string to array) and convert to ObjectIds
+    const excludeIdsArray = excludeIds
+      ? excludeIds.split(',').filter(id => id && mongoose.Types.ObjectId.isValid(id)).map(id => new mongoose.Types.ObjectId(id))
+      : [];
 
     // Build query filter
     const filter = {
