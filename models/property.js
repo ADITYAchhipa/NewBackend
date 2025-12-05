@@ -70,6 +70,7 @@ const PropertySchema = new Schema(
     rules: { type: [String], default: [] }, // e.g., ['noSmoking','noPets']
     meta: {
       views: { type: Number, default: 0 },
+      bookings: { type: Number, default: 0 },
       tags: [String],
     },
   },

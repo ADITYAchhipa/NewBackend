@@ -11,12 +11,12 @@ const BookingSchema = new Schema(
         totalPrice: { type: Number, required: true },
         status: {
             type: String,
-            enum: ['pending', 'confirmed', 'cancelled', 'completed'],
+            enum: [ 'confirmed', 'cancelled', 'completed'],
             default: 'pending'
         },
         paymentStatus: {
             type: String,
-            enum: ['pending', 'paid', 'refunded'],
+            enum: ['paid', 'refunded'],
             default: 'pending'
         },
     },

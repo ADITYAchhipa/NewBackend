@@ -1,5 +1,5 @@
 // models/vehicle.js
-import { Schema, model } from 'mongoose';
+import mongoose, { Schema, model } from 'mongoose';
 
 const VehicleSchema = new Schema(
   {
@@ -19,7 +19,7 @@ const VehicleSchema = new Schema(
       currency: { type: String, default: 'INR' },
       securityDeposit: { type: Number, default: 0 },
     },
-    Featured: { type: Boolean, default: false}, 
+    Featured: { type: Boolean, default: false },
     location: {
       type: { type: String, enum: ['Point'], default: 'Point' },
       coordinates: { type: [Number] }, // [lng, lat]
@@ -43,4 +43,5 @@ VehicleSchema.index({ make: 'text', model: 'text' });
 // 2dsphere index for geospatial queries
 VehicleSchema.index({ location: '2dsphere' });
 
-export default model('Vehicle', VehicleSchema);
+// Use existing model if already compiled, otherwise create new one
+export default mongoose.models.Vehicle || model('Vehicle', VehicleSchema);

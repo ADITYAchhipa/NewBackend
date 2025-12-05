@@ -633,23 +633,16 @@ export const getFavouritesWithSort = async (req, res) => {
     } else if (sort === 'priceAsc') {
       // Price: Low to High
       results.sort((a, b) => {
-        const priceA = a.itemType === 'property'
-          ? (a.pricing?.monthly || 0)
-          : (a.price?.perDay || 0);
-        const priceB = b.itemType === 'property'
-          ? (b.pricing?.monthly || 0)
-          : (b.price?.perDay || 0);
+        // Handle both property (price.perMonth) and vehicle (price.perDay) pricing
+        const priceA = a.price?.perMonth || a.price?.perDay || a.pricing?.monthly || 0;
+        const priceB = b.price?.perMonth || b.price?.perDay || b.pricing?.monthly || 0;
         return priceA - priceB;
       });
     } else if (sort === 'priceDesc') {
       // Price: High to Low
       results.sort((a, b) => {
-        const priceA = a.itemType === 'property'
-          ? (a.pricing?.monthly || 0)
-          : (a.price?.perDay || 0);
-        const priceB = b.itemType === 'property'
-          ? (b.pricing?.monthly || 0)
-          : (b.price?.perDay || 0);
+        const priceA = a.price?.perMonth || a.price?.perDay || a.pricing?.monthly || 0;
+        const priceB = b.price?.perMonth || b.price?.perDay || b.pricing?.monthly || 0;
         return priceB - priceA;
       });
     } else if (sort === 'rating') {

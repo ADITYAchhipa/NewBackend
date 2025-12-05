@@ -1,5 +1,6 @@
 import express from 'express'
 import { register, login, isAuth, logout, otp, verify, forgot, resetPassword, changePasswordProfile, updateCountry, updateBanner, updateProfileImage, updateDetails } from '../controller/userController.js';
+import { getUserBookings } from '../controller/bookingController.js';
 import authUser from '../middleware/authUser.js';
 import { upload } from '../config/multer.js';
 
@@ -19,6 +20,7 @@ userRouter.post('/otp', otp);
 userRouter.post('/verify', verify);
 userRouter.post('/logout', logout);
 userRouter.get('/is-auth', authUser, isAuth); //
+userRouter.get('/bookings', authUser, getUserBookings); // Get user bookings
 // userRouter.get('/next',authUser, logout);
 
 

@@ -1,9 +1,9 @@
-login popup or failed login popup 
+login popup or failed login popup  # DONE
 
-cover page in profile section and connect it with /user/updateBanner and create popu
+cover page in profile section and connect it with /user/updateBanner and create popu #DONE
 
 
-profile pic section on profile is not working and connect it with path /user/updateProfileImage and create popu
+profile pic section on profile is not working and connect it with path /user/updateProfileImage and create popu #DONE
 
 
 the edit section in profile is not looking good
@@ -14,14 +14,17 @@ create validation in edit profile page and connect it with backend path /user/up
 wallet section is looking disgusting  (overview)
 
 
-when you press the search bar in home page it is redirecting to  search page but in the boottom logos insted of search icon home icon is selected
+when you press the search bar in home page it is redirecting to  search page but in the boottom logos insted of search icon home icon is selected #DONE
 
 
 create a list of achivements and the backend will give only the value like (Early adopter , top reviewer , top seller) how the card will look decide it and create something for it
 
 
+inside reset password of profile section all the checks are not working properly when we press the eye button only then it show which check are passed
 
-scroll in home page
+
+
+
 
 
 
@@ -32,17 +35,41 @@ create achivements section in data base
 
 switch db url before push
 
+todays work done from my side
 
 
-4-12-25
+
+5-12-25
+
+highest priority task do them as fast as you can 
+
+in the owner section
+
+remove start kyc button and integrate the kyc section in the kyc requirew section
+
+solve the size issue of card in manage list section
 
 
-if the backend is not runing handle the errror revealing data
-
-if a person using 2 fingeres to scroll solve this 
-
-in the vechile section after sedan the page is flickering 
+if the owner refresh the page he will be redirected to the user 
 
 
-remove the clear all button form wishlist
 
+
+
+in the user section
+
+
+solve switch from all to cars
+
+remove clear all from wishlist
+
+remove the filters in serach
+    VIEW ONLY EITH IMAGE
+    BATHROOM
+    BUILT UP AREA
+    REMOVE VECHILE FROM CATEGORY
+    CHANGE NAME OF PREFERED TENANT
+    CHANGE NAME OF ASSENTIAN A
+improve its ui and also on sligtly pull it refresh
+
+in the edit profile section ther is a id varification section  remove that there is no need of it 

@@ -20,6 +20,7 @@ import disputeRouter from './routes/disputeRoutes.js';
 import visitedRoutes from './routes/visitedRoutes.js';
 import visitedVehiclesRoutes from './routes/visitedVehiclesRoutes.js';
 import recommendedRoutes from './routes/recommendedRoutes.js';
+import ownerRouter from './routes/ownerRoutes.js';
 const app = express();
 
 
@@ -55,6 +56,7 @@ app.use('/api/disputes', disputeRouter)
 app.use('/api/user/visited', visitedRoutes); // Recently visited properties
 app.use('/api/user/visited-vehicles', visitedVehiclesRoutes); // Recently visited vehicles
 app.use('/api/recommended', recommendedRoutes); // Personalized recommendations
+app.use('/api/owner', ownerRouter); // Owner dashboard routes
 
 
 app.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));
