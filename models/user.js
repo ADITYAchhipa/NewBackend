@@ -7,6 +7,7 @@ const UserSchema = new Schema({
   email: { type: String, lowercase: true, unique: true, sparse: true, index: true },
   phone: { type: String, unique: true, sparse: true, index: true },
   bio: { type: String },
+  kyc: { type: String,enum: ['completed', 'pending', 'UnCompleted'],default:'UnCompleted'},
   // Auth
   password: { type: String, select: false },
 

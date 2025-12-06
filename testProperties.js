@@ -1,13 +1,18 @@
 import mongoose from "mongoose";
 import Property from "./models/property.js";
+import dotenv from "dotenv";
 
-// === MongoDB Connection ===
-const DB_NAME = "rentaly"; // change to "rentaly" if you prefer
-const MONGO_URI = `mongodb://localhost:27017/${DB_NAME}`;
+// Load environment variables from .env
+dotenv.config();
+
+// === MongoDB Connection - uses same URI as the main server ===
+const MONGO_URI = process.env.MONGODB_URI;
+
+console.log("Using MONGODB_URI from .env file");
 
 try {
   await mongoose.connect(MONGO_URI);
-  console.log(`✅ Connected to MongoDB database: ${DB_NAME}`);
+  console.log(`✅ Connected to MongoDB`);
 } catch (err) {
   console.error("❌ MongoDB Connection Error:", err);
   process.exit(1);
@@ -66,7 +71,7 @@ const properties = Array.from({ length: 100 }).map((_, i) => {
     } : undefined,
     status: "active",
     available: true,
-    Featured: Math.random() < 0.1,
+    Featured: true,
     bookingType: randomItem(bookingTypes),
     rating: { avg: randomNumber(1, 5), count: randomNumber(1, 50) },
     rules: ["noSmoking", "noPets"].filter(() => Math.random() < 0.5),

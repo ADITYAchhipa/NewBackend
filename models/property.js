@@ -1,17 +1,32 @@
 // models/property.model.js
 // import Property from "./models/property.js";
 import mongoose from 'mongoose';
-import {Schema,model} from 'mongoose'
+import { Schema, model } from 'mongoose'
 const PropertySchema = new Schema(
   {
     ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+
+    // Category type: residential, commercial, venue
+    categoryType: {
+      type: String,
+      enum: ['residential', 'commercial', 'venue'],
+      default: 'residential',
+      index: true,
+    },
 
     // Basic listing info
     title: { type: String, required: true, index: true },
     description: { type: String },
     category: {
       type: String,
-      enum: ['apartment', 'house', 'villa', 'condo', 'studio', 'pg', 'guest_house', 'land', 'office', 'shared_room'],
+      enum: [
+        // Residential
+        'apartment', 'house', 'villa', 'studio', 'townhouse', 'condo', 'room', 'pg', 'hostel', 'duplex', 'penthouse', 'bungalow',
+        // Commercial  
+        'office', 'shop', 'warehouse', 'coworking', 'showroom', 'clinic', 'restaurant', 'cafe',
+        // Venue
+        'banquet_hall', 'wedding_venue', 'party_hall', 'conference_room', 'meeting_room', 'auditorium', 'theater', 'garden', 'rooftop', 'ballroom', 'resort', 'farmhouse', 'studio_venue', 'exhibition', 'club', 'dining_room'
+      ],
       required: true,
       index: true,
     },
@@ -47,6 +62,13 @@ const PropertySchema = new Schema(
     furnished: { type: String, enum: ['unfurnished', 'semi-furnished', 'furnished'], default: 'unfurnished' },
     amenities: { type: [String], default: [] }, // e.g., ['parking','lift','powerBackup','swimmingPool']
 
+    // Essential amenities for filtering
+    essentialAmenities: {
+      type: [String],
+      default: [],
+      // e.g., ['wifi', 'parking', 'ac', 'gym', 'swimming_pool', 'power_backup', 'lift', 'security', 'garden']
+    },
+
     // House-specific details (used when category === 'house')
     houseDetails: {
       houseType: {
@@ -62,7 +84,7 @@ const PropertySchema = new Schema(
     // listing state & meta
     status: { type: String, enum: ['active', 'inactive', 'suspended', 'deleted'], default: 'active' },
     available: { type: Boolean, default: true },
-    Featured: { type: Boolean, default: false},
+    Featured: { type: Boolean, default: false },
     bookingType: { type: String, enum: ['rent', 'sale', 'lease'], default: 'rent' },
 
     rating: { avg: { type: Number, default: 0 }, count: { type: Number, default: 0 } },

@@ -76,15 +76,39 @@ export const getPaginatedSearchResults = async (req, res) => {
     }
 
     // Add text search if query provided
+    // Split keywords by space - each keyword must match at least one field (AND logic)
     if (query && query.trim()) {
-      baseQuery.$or = [
-        { title: { $regex: query, $options: 'i' } },
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-        { city: { $regex: query, $options: 'i' } },
-        { state: { $regex: query, $options: 'i' } },
-        { address: { $regex: query, $options: 'i' } }
-      ];
+      const keywords = query.trim().split(/\s+/).filter(k => k.length > 0);
+
+      if (keywords.length === 1) {
+        // Single keyword - search across all fields (OR)
+        const keyword = keywords[0];
+        baseQuery.$or = [
+          { title: { $regex: keyword, $options: 'i' } },
+          { name: { $regex: keyword, $options: 'i' } },
+          { description: { $regex: keyword, $options: 'i' } },
+          { city: { $regex: keyword, $options: 'i' } },
+          { state: { $regex: keyword, $options: 'i' } },
+          { address: { $regex: keyword, $options: 'i' } },
+          { category: { $regex: keyword, $options: 'i' } },
+          { categoryType: { $regex: keyword, $options: 'i' } }
+        ];
+      } else {
+        // Multiple keywords - each keyword must match in at least one field (AND of ORs)
+        // Example: "apartment udaipur" -> must match "apartment" in any field AND "udaipur" in any field
+        baseQuery.$and = keywords.map(keyword => ({
+          $or: [
+            { title: { $regex: keyword, $options: 'i' } },
+            { name: { $regex: keyword, $options: 'i' } },
+            { description: { $regex: keyword, $options: 'i' } },
+            { city: { $regex: keyword, $options: 'i' } },
+            { state: { $regex: keyword, $options: 'i' } },
+            { address: { $regex: keyword, $options: 'i' } },
+            { category: { $regex: keyword, $options: 'i' } },
+            { categoryType: { $regex: keyword, $options: 'i' } }
+          ]
+        }));
+      }
     }
 
     // Get user data for relevance sorting (if authenticated)

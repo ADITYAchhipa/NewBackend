@@ -1,6 +1,6 @@
 // testUser.js
 import mongoose from 'mongoose';
-import User from './models/User.js'; // make sure this path is correct
+import User from './models/user.js'; // make sure this path is correct
 
 const propertyIds = [
   "690479dfd7491807e0e9c02e","690479dfd7491807e0e9c02f",

@@ -21,6 +21,8 @@ import visitedRoutes from './routes/visitedRoutes.js';
 import visitedVehiclesRoutes from './routes/visitedVehiclesRoutes.js';
 import recommendedRoutes from './routes/recommendedRoutes.js';
 import ownerRouter from './routes/ownerRoutes.js';
+import identityVerificationRouter from './routes/identityVerificationRoutes.js';
+import filterRouter from './routes/filterRoutes.js';
 const app = express();
 
 
@@ -57,6 +59,8 @@ app.use('/api/user/visited', visitedRoutes); // Recently visited properties
 app.use('/api/user/visited-vehicles', visitedVehiclesRoutes); // Recently visited vehicles
 app.use('/api/recommended', recommendedRoutes); // Personalized recommendations
 app.use('/api/owner', ownerRouter); // Owner dashboard routes
+app.use('/api/identity-verification', identityVerificationRouter); // KYC identity verification
+app.use('/api/filter', filterRouter); // Search filter routes
 
 
 app.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));
