@@ -7,7 +7,7 @@ const UserSchema = new Schema({
   email: { type: String, lowercase: true, unique: true, sparse: true, index: true },
   phone: { type: String, unique: true, sparse: true, index: true },
   bio: { type: String },
-  kyc: { type: String,enum: ['completed', 'pending', 'UnCompleted'],default:'UnCompleted'},
+  kyc: { type: String, enum: ['completed', 'pending', 'UnCompleted'], default: 'UnCompleted' },
   // Auth
   password: { type: String, select: false },
 
@@ -51,6 +51,9 @@ const UserSchema = new Schema({
     cancelled: [{ type: Schema.Types.ObjectId, ref: 'Booking' }]
   },
   ReferralCode: { type: String },
+
+  // Chat - list of users this person has messaged
+  propertyOwners: [{ type: Schema.Types.ObjectId, ref: 'User' }],
 
   Achivements: { name: [{ type: String }] },
   Country: { type: String },

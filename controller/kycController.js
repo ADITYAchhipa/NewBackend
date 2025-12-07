@@ -46,10 +46,10 @@ export const submitKyc = async (req, res) => {
         if (!selfieFile) {
             return res.json({ success: false, message: 'Selfie image is required' });
         }
-        // Back ID is required for non-passport documents
-        if (documentType !== 'passport' && !backIdFile) {
-            return res.json({ success: false, message: 'Back ID image is required for this document type' });
-        }
+        // Back ID is optional now
+        // if (documentType !== 'passport' && !backIdFile) {
+        //     return res.json({ success: false, message: 'Back ID image is required for this document type' });
+        // }
 
         console.log(`Processing KYC submission for user: ${userId}`);
 

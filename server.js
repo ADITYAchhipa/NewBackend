@@ -1,6 +1,8 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import connectDB from './config/db.js';
 import 'dotenv/config';
 import connectCloudinary from './config/cloudinary.js';
@@ -23,10 +25,61 @@ import recommendedRoutes from './routes/recommendedRoutes.js';
 import ownerRouter from './routes/ownerRoutes.js';
 import identityVerificationRouter from './routes/identityVerificationRoutes.js';
 import filterRouter from './routes/filterRoutes.js';
+import chatRouter from './routes/chatRoutes.js';
+
 const app = express();
+const server = createServer(app);
 
+// Socket.io setup
+const io = new Server(server, {
+    cors: {
+        origin: true,
+        credentials: true
+    }
+});
 
-app.use(express.json()); // parse JSON
+// Store online users: { odId: socketId }
+const userSocketMap = {};
+
+// Make io and userSocketMap available to routes
+app.set('io', io);
+app.set('userSocketMap', userSocketMap);
+
+// Export for use in other files
+export { io, userSocketMap };
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+    console.log('🔌 User connected:', socket.id);
+
+    // Get userId from query params (sent by client on connect)
+    const userId = socket.handshake.query.userId;
+    if (userId && userId !== 'undefined') {
+        userSocketMap[userId] = socket.id;
+        console.log(`📱 User ${userId} is now online`);
+
+        // Broadcast online status to all connected clients
+        io.emit('userOnline', { userId });
+    }
+
+    socket.on('disconnect', () => {
+        console.log('🔌 User disconnected:', socket.id);
+
+        // Find and remove user from map
+        for (const [uid, sid] of Object.entries(userSocketMap)) {
+            if (sid === socket.id) {
+                delete userSocketMap[uid];
+                console.log(`📱 User ${uid} is now offline`);
+
+                // Broadcast offline status
+                io.emit('userOffline', { userId: uid });
+                break;
+            }
+        }
+    });
+});
+
+app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for images
 app.use(cors({ origin: true, credentials: true })); // enable CORS with credentials
 
 const port = process.env.PORT || 4000;
@@ -61,6 +114,7 @@ app.use('/api/recommended', recommendedRoutes); // Personalized recommendations
 app.use('/api/owner', ownerRouter); // Owner dashboard routes
 app.use('/api/identity-verification', identityVerificationRouter); // KYC identity verification
 app.use('/api/filter', filterRouter); // Search filter routes
+app.use('/api/chat', chatRouter); // Chat routes
 
 
-app.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));
+server.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));
