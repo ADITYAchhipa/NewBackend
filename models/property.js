@@ -15,8 +15,8 @@ const PropertySchema = new Schema(
     },
 
     // Basic listing info
-    title: { type: String, required: true, index: true },
-    description: { type: String },
+    title: { type: String, required: true, index: true },   // ok
+    description: { type: String },// ok
     category: {
       type: String,
       enum: [
@@ -29,7 +29,7 @@ const PropertySchema = new Schema(
       ],
       required: true,
       index: true,
-    },
+    },// ok
 
     // Price info
     price: {
@@ -37,6 +37,7 @@ const PropertySchema = new Schema(
       perDay: { type: Number },
       currency: { type: String, default: 'INR' },
       securityDeposit: { type: Number, default: 0 },
+      extraCharges: { type: [String], default: [] },
     },
 
     // location: human readable + geo for queries
@@ -59,7 +60,7 @@ const PropertySchema = new Schema(
     bedrooms: { type: Number },
     bathrooms: { type: Number },
     areaSqft: { type: Number },
-    furnished: { type: String, enum: ['unfurnished', 'semi-furnished', 'furnished'], default: 'unfurnished' },
+    furnished: { type: String, enum: ['unfurnished', 'semi-furnished', 'furnished'], default: 'unfurnished' },// ok
     amenities: { type: [String], default: [] }, // e.g., ['parking','lift','powerBackup','swimmingPool']
 
     // Essential amenities for filtering
@@ -69,17 +70,20 @@ const PropertySchema = new Schema(
       // e.g., ['wifi', 'parking', 'ac', 'gym', 'swimming_pool', 'power_backup', 'lift', 'security', 'garden']
     },
 
+    nearbyFacilities: { type: [String], default: [] }, // e.g., ['market', 'hospital', 'school', 'bank', 'supermarket', 'park']
+    prefrences: { type: [String], default: [] }, // e.g., ['non-smoking', 'non-pet', 'non-smoking', 'non-pet', 'non-smoking', 'non-pet']
+
     // House-specific details (used when category === 'house')
     houseDetails: {
       houseType: {
         type: String,
         enum: ['1BHK', '2BHK', '3BHK', '4BHK', '5BHK', 'studio', 'duplex', 'penthouse', 'villa', 'shared'],
-      },
+      },// ok
       separateWashroom: { type: Boolean }, // whether each bedroom has separate washroom
       floor: { type: Number }, // current floor
       totalFloors: { type: Number }, // total floors in building
       plotSizeSqft: { type: Number }, // optional for standalone houses
-    },
+    },// ok
 
     // listing state & meta
     status: { type: String, enum: ['active', 'inactive', 'suspended', 'deleted'], default: 'active' },
@@ -95,6 +99,9 @@ const PropertySchema = new Schema(
       bookings: { type: Number, default: 0 },
       tags: [String],
     },
+
+    gateClosingTime: { type: String },
+
   },
   { timestamps: true }
 );

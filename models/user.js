@@ -10,6 +10,11 @@ const UserSchema = new Schema({
   kyc: { type: String, enum: ['completed', 'pending', 'UnCompleted'], default: 'UnCompleted' },
   // Auth
   password: { type: String, select: false },
+  TotalEarnings: { type: Number, default: 0 },
+  ActiveListings: { type: Number, default: 0 },
+  InactiveListings: { type: Number, default: 0 },
+  TotalBookings: { type: Number, default: 0 },
+  AvailableBalance: { type: Number, default: 0 },
 
   // Profile & KYC
   avatar: String,
@@ -24,6 +29,7 @@ const UserSchema = new Schema({
     properties: [{ type: Schema.Types.ObjectId, ref: 'Property' }],
     vehicles: [{ type: Schema.Types.ObjectId, ref: 'Vehicle' }]
   },
+  verify: { type: Boolean, default: false },
 
   // Recently visited properties (LRU cache, max 20)
   // Controller handles limiting to 20 items via slice
@@ -59,6 +65,53 @@ const UserSchema = new Schema({
   Country: { type: String },
   State: { type: String },
   City: { type: String },
+
+  // Earnings History - for analytics charts
+  // daily: 30-item FIFO queue, monthly: 12-item FIFO queue, yearly: dynamic array
+  earningsHistory: {
+    properties: {
+      daily: {
+        data: { type: [Number], default: () => Array(30).fill(0) },  // 30 days of earnings
+        lastUpdated: {
+          day: { type: Number },    // 1-31
+          month: { type: Number },  // 1-12
+          year: { type: Number }    // e.g., 2024
+        }
+      },
+      monthly: {
+        data: { type: [Number], default: () => Array(12).fill(0) },  // 12 months of earnings
+        lastUpdated: {
+          month: { type: Number },  // 1-12
+          year: { type: Number }    // e.g., 2024
+        }
+      },
+      yearly: [{
+        year: { type: Number },
+        earnings: { type: Number, default: 0 }
+      }]
+    },
+    vehicles: {
+      daily: {
+        data: { type: [Number], default: () => Array(30).fill(0) },
+        lastUpdated: {
+          day: { type: Number },
+          month: { type: Number },
+          year: { type: Number }
+        }
+      },
+      monthly: {
+        data: { type: [Number], default: () => Array(12).fill(0) },
+        lastUpdated: {
+          month: { type: Number },
+          year: { type: Number }
+        }
+      },
+      yearly: [{
+        year: { type: Number },
+        earnings: { type: Number, default: 0 }
+      }]
+    }
+  },
 
 }, { timestamps: true });
 
