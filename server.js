@@ -1,11 +1,13 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import helmet from 'helmet';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
 import 'dotenv/config';
 import connectCloudinary from './config/cloudinary.js';
+import { generalRateLimiter } from './middleware/rateLimiter.js';
 // import sellerRoutes from './routes/searchRoutes.js';
 import sellerRoutes from './routes/sellerRoutes.js';
 import searchrouter from './routes/searchRoutes.js';
@@ -81,6 +83,18 @@ io.on('connection', (socket) => {
 
 app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for images
 app.use(cors({ origin: true, credentials: true })); // enable CORS with credentials
+
+// Security middleware
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin for images
+    contentSecurityPolicy: false // Disable CSP for development
+}));
+
+// Trust proxy for accurate client IP (important for rate limiting)
+app.set('trust proxy', 1);
+
+// Global rate limiter - 100 requests per minute per IP
+app.use('/api', generalRateLimiter);
 
 const port = process.env.PORT || 4000;
 

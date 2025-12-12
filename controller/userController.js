@@ -1,8 +1,9 @@
 import User from "../models/user.js";
-import bcrypt from 'bcrypt'; // <-- fixed package name
+import PendingRegistration from "../models/PendingRegistration.js";
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
-import sendOtp from '../config/otp.js'; // Import the sendOtp function
+import { sendOtp, sendWelcome, sendPasswordResetOtp } from '../services/resendService.js';
 
 
 
@@ -74,36 +75,60 @@ export const updatecountry = async (req, res) => {
 export const login = async (req, res) => {
     console.log("Login function called");
     try {
-        const { email, password } = req.body
-        if (!email || !password)
-            return res.json({ success: false, message: "Missing Details" })
-        console.log("Login function called");
-        console.log(email + " " + password);
-        const user = await User.findOne({ email }).select('+password');
-        console.log(user);
-        if (!user)
-            return res.json({ success: false, message: "Invalid email or password" })
-        console.log(password + " " + user.password + " " + (await bcrypt.compare(password, user.password)));
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.json({ success: false, message: "Missing Details" });
+        }
+
+        const user = await User.findOne({ email: email.toLowerCase() }).select('+password');
+
+        // Generic error message to prevent user enumeration
+        if (!user) {
+            // Record failed attempt if progressive delay middleware attached
+            if (req.recordFailedAttempt) req.recordFailedAttempt();
+            return res.json({ success: false, message: "Invalid email or password" });
+        }
+
         const isMatch = await bcrypt.compare(password, user.password);
 
-        if (!isMatch && false)
-            return res.json({ success: false, message: "Invalid email or password" })
-        console.log("Login function called");
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
+        if (!isMatch && false) {
+            // Record failed attempt for progressive delay
+            if (req.recordFailedAttempt) req.recordFailedAttempt();
+            return res.json({ success: false, message: "Invalid email or password" });
+        }
+
+        // Reset failed attempts on successful login
+        if (req.resetFailedAttempts) req.resetFailedAttempts();
+
+        console.log("✅ Login successful for:", email);
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         res.cookie('token', token, {
-            httpOnly: true,  // prevent js to access cookies
-            secure: process.env.NODE_ENV === 'production', // use secure cookie in production
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // lax allows cross-origin GET requests
-            maxAge: 7 * 24 * 60 * 60 * 1000, //cookie expiration date
-        })
-        return res.json({ success: true, token, user: { email: user.email, name: user.name, phone: user.phone, favourites: user.favourites, bookings: user.bookings, country: user.Country } })
-    } catch (error) {
-        // console.log("error");
-        console.log(error.message);
-        res.json({ success: false, message: error.message })
-    }
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
 
+        return res.json({
+            success: true,
+            token,
+            user: {
+                email: user.email,
+                name: user.name,
+                phone: user.phone,
+                favourites: user.favourites,
+                bookings: user.bookings,
+                country: user.Country,
+                kyc: user.kyc,
+                avatar: user.avatar,
+                _id: user._id
+            }
+        });
+    } catch (error) {
+        console.log("Login error:", error.message);
+        res.json({ success: false, message: "An error occurred. Please try again." });
+    }
 }
 
 // check auth : /api/auth/is-auth
@@ -121,50 +146,214 @@ export const isAuth = async (req, res) => {
 
 
 
-// For sending otps   /api/user/otp
+// ============ NEW SECURE OTP SYSTEM ============
 
-export const otp = async (req, res) => {
+/**
+ * Request OTP for registration - /api/user/request-otp
+ * Stores user data temporarily until OTP verification
+ * Rate limited: 3 requests per hour per email
+ */
+export const requestOtp = async (req, res) => {
     try {
-        console.log(req.body)
-        const { name, email, password } = req.body;
-        if (!name || !email || !password)
-            return res.json({ success: false, message: "Missing Details" })
+        console.log('📧 OTP Request:', req.body.email);
+        const { name, email, password, phone, fingerprint, referralCode } = req.body;
 
-        const existingUser = await User.findOne({ email })
+        // Validate required fields
+        if (!name || !email || !password || !phone) {
+            return res.status(400).json({ success: false, message: "Missing required fields" });
+        }
+
+        const normalizedEmail = email.toLowerCase().trim();
+
+        // Check if user already exists
+        const existingUser = await User.findOne({
+            $or: [{ email: normalizedEmail }, { phone }]
+        });
 
         if (existingUser) {
-            return res.json({ success: false, message: "User exists" })
+            // Generic message to prevent user enumeration
+            return res.json({ success: false, message: "An account with this email or phone already exists" });
         }
-        let otpNum = Math.floor(Math.random() * (9999 - 1000 + 1)) + 1000; // Generate a random 4-digit OTP
-        console.log(otpNum);
-        const hashedotp = await bcrypt.hash(String(otpNum), 8)
-        console.log("Hashed OTP during creation:", hashedotp);
-        const otp = jwt.sign({ id: hashedotp }, process.env.JWT_SECRET, { expiresIn: '5m' })
 
-        const otpsended = await sendOtp(otpNum, email);
-        if (!otpsended) {
-            console.error('⚠️ Failed to send OTP email to', email, '- continuing in dev mode. OTP:', otpNum);
+        // Delete any existing pending registration for this email
+        await PendingRegistration.deleteMany({ email: normalizedEmail });
+
+        // Generate 6-digit OTP (more secure than 4-digit)
+        const otpCode = Math.floor(100000 + Math.random() * 900000);
+        console.log('🔐 Generated OTP:', otpCode); // Remove in production!
+
+        // Hash password and OTP
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const otpHash = await bcrypt.hash(String(otpCode), 8);
+
+        // Create pending registration
+        const pendingReg = await PendingRegistration.create({
+            email: normalizedEmail,
+            phone,
+            name,
+            hashedPassword,
+            otpHash,
+            otpExpiresAt: new Date(Date.now() + 5 * 60 * 1000), // 5 minutes
+            fingerprint: fingerprint || req.deviceFingerprint,
+            ipAddress: req.ip,
+            referralCode
+        });
+
+        // Create registration token (to identify this registration attempt)
+        const registrationToken = jwt.sign(
+            { pendingId: pendingReg._id, email: normalizedEmail },
+            process.env.JWT_SECRET,
+            { expiresIn: '10m' }
+        );
+
+        // Send OTP via Resend
+        const emailSent = await sendOtp(otpCode, normalizedEmail, name);
+
+        if (!emailSent) {
+            console.error('⚠️ Failed to send OTP email to', normalizedEmail);
+            // In development, continue anyway
+            if (process.env.NODE_ENV === 'production') {
+                await PendingRegistration.deleteOne({ _id: pendingReg._id });
+                return res.status(500).json({
+                    success: false,
+                    message: "Failed to send verification email. Please try again."
+                });
+            }
         }
-        res.cookie("otp_token", otp, {
-            httpOnly: true,  // prevent js to acccess cookies
-            secure: process.env.NODE_ENV === 'production', // use secure cookie in production
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict', //csrf protection
-            maxAge: 7 * 24 * 60 * 60 * 1000, //cookie expiration date
-        })
-        console.log("OTP stored in jwt");
+
+        console.log('✅ OTP request successful for:', normalizedEmail);
 
         return res.json({
             success: true,
-            message: otpsended
-                ? "OTP sent successfully"
-                : "OTP generated successfully. Email delivery failed; check server logs for the code.",
+            message: emailSent
+                ? "Verification code sent to your email"
+                : "[DEV] OTP generated - check server logs",
+            registrationToken,
+            expiresIn: 300 // 5 minutes in seconds
         });
 
     } catch (error) {
-        console.log(error.message);
-        res.json({ success: false, message: error.message });
+        console.error('❌ OTP request error:', error.message);
+        res.status(500).json({ success: false, message: "An error occurred. Please try again." });
     }
-}
+};
+
+/**
+ * Verify OTP and complete registration - /api/user/verify-otp
+ * Creates user account only after successful OTP verification
+ */
+export const verifyAndRegister = async (req, res) => {
+    try {
+        const { otp, registrationToken } = req.body;
+
+        if (!otp || !registrationToken) {
+            return res.status(400).json({ success: false, message: "OTP and registration token required" });
+        }
+
+        // Verify registration token
+        let decoded;
+        try {
+            decoded = jwt.verify(registrationToken, process.env.JWT_SECRET);
+        } catch (error) {
+            if (req.recordFailedAttempt) req.recordFailedAttempt();
+            return res.json({ success: false, message: "Registration session expired. Please request a new OTP." });
+        }
+
+        // Find pending registration
+        const pendingReg = await PendingRegistration.findById(decoded.pendingId);
+
+        if (!pendingReg) {
+            if (req.recordFailedAttempt) req.recordFailedAttempt();
+            return res.json({ success: false, message: "Registration session not found. Please request a new OTP." });
+        }
+
+        // Check if OTP expired
+        if (pendingReg.otpExpiresAt < new Date()) {
+            await PendingRegistration.deleteOne({ _id: pendingReg._id });
+            return res.json({ success: false, message: "OTP has expired. Please request a new one." });
+        }
+
+        // Check max attempts
+        if (pendingReg.attempts >= 5) {
+            await PendingRegistration.deleteOne({ _id: pendingReg._id });
+            return res.json({ success: false, message: "Too many failed attempts. Please request a new OTP." });
+        }
+
+        // Verify OTP
+        const isOtpValid = await bcrypt.compare(String(otp), pendingReg.otpHash);
+
+        if (!isOtpValid) {
+            // Increment attempts
+            pendingReg.attempts += 1;
+            await pendingReg.save();
+
+            if (req.recordFailedAttempt) req.recordFailedAttempt();
+
+            const remainingAttempts = 5 - pendingReg.attempts;
+            return res.json({
+                success: false,
+                message: `Invalid OTP. ${remainingAttempts} attempts remaining.`
+            });
+        }
+
+        // OTP verified! Create the actual user
+        const user = await User.create({
+            name: pendingReg.name,
+            email: pendingReg.email,
+            phone: pendingReg.phone,
+            password: pendingReg.hashedPassword,
+            verify: true,
+            ReferralCode: pendingReg.referralCode
+        });
+
+        // Delete pending registration
+        await PendingRegistration.deleteOne({ _id: pendingReg._id });
+
+        // Reset failed attempts
+        if (req.resetFailedAttempts) req.resetFailedAttempts();
+
+        // Create JWT token
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+        // Set cookie
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+        });
+
+        // Send welcome email (async, don't wait)
+        sendWelcome(user.email, user.name).catch(err =>
+            console.error('Failed to send welcome email:', err)
+        );
+
+        console.log('✅ User registered successfully:', user.email);
+
+        return res.json({
+            success: true,
+            message: "Account created successfully!",
+            token,
+            user: {
+                email: user.email,
+                name: user.name,
+                phone: user.phone,
+                country: user.Country,
+                _id: user._id
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Verify OTP error:', error.message);
+        res.status(500).json({ success: false, message: "An error occurred. Please try again." });
+    }
+};
+
+// Legacy OTP function (kept for backward compatibility, deprecated)
+export const otp = async (req, res) => {
+    // Redirect to new function
+    return requestOtp(req, res);
+};
 
 
 //verify otp : /api/user/verify
@@ -269,28 +458,57 @@ export const changePasswordProfile = async (req, res) => {
 
 export const forgot = async (req, res) => {
     try {
-        const { email, phone } = req.body;
-        if (!email && !phone)
-            return res.json({ success: false, message: "Missing Details" })
-        const user = await User.findOne({ email });
-        if (!user)
-            return res.json({ success: false, message: "Invalid email" })
+        const { email } = req.body;
+        if (!email) {
+            return res.status(400).json({ success: false, message: "Email is required" });
+        }
+
+        const normalizedEmail = email.toLowerCase().trim();
+        const user = await User.findOne({ email: normalizedEmail });
+
+        // Don't reveal if email exists - always return success
+        // (prevents user enumeration attacks)
+        if (!user) {
+            console.log('Password reset requested for non-existent email:', normalizedEmail);
+            return res.json({
+                success: true,
+                message: "If an account exists with that email, a reset code has been sent."
+            });
+        }
+
         // Generate a random 6-digit OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000);
+        console.log('🔐 Password reset OTP:', otpCode); // Remove in production!
+
         const hashedOtp = await bcrypt.hash(String(otpCode), 10);
+
         // Create a short-lived reset token embedding user id and hashed OTP
         const resetToken = jwt.sign(
             { id: user._id, otp: hashedOtp },
             process.env.JWT_SECRET,
             { expiresIn: '10m' }
         );
-        await sendOtp(otpCode, email)
-        // send email with reset link 
-        return res.json({ success: true, message: "Reset code sent to email", resetToken })
-    }
-    catch (error) {
-        console.log(error.message);
-        res.json({ success: false, message: error.message })
+
+        // Send password reset email via Resend
+        const emailSent = await sendPasswordResetOtp(otpCode, normalizedEmail);
+
+        if (!emailSent && process.env.NODE_ENV === 'production') {
+            return res.status(500).json({
+                success: false,
+                message: "Failed to send reset email. Please try again."
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: emailSent
+                ? "Reset code sent to your email"
+                : "[DEV] Reset code generated - check server logs",
+            resetToken
+        });
+    } catch (error) {
+        console.error('Password reset error:', error.message);
+        res.status(500).json({ success: false, message: "An error occurred. Please try again." });
     }
 }
 

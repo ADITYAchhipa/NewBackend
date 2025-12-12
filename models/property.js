@@ -47,9 +47,9 @@ const PropertySchema = new Schema(
     country: { type: String, default: 'India' },
     postalCode: { type: String },
 
-    // GeoJSON for $near queries
+    // GeoJSON for $near queries - only set when valid coordinates exist
     locationGeo: {
-      type: { type: String, enum: ['Point'], default: 'Point' },
+      type: { type: String, enum: ['Point'] }, // No default - only set when coordinates are valid
       coordinates: { type: [Number] }, // [lng, lat]
     },
 

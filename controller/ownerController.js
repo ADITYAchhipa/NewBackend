@@ -271,3 +271,178 @@ export const getOwnerListings = async (req, res) => {
         return res.status(500).json({ success: false, message: error.message });
     }
 };
+
+/**
+ * Create a new property listing
+ * POST /api/owner/property
+ */
+export const createPropertyListing = async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        const propertyData = {
+            ...req.body,
+            ownerId: userId,
+            status: 'active',
+            available: true,
+        };
+
+        // Handle locationGeo - remove if coordinates are missing or empty to avoid geo index error
+        if (propertyData.locationGeo) {
+            const geo = propertyData.locationGeo;
+            const coords = geo.coordinates;
+            // Remove if: no coordinates key, not an array, less than 2 elements, or null/undefined values
+            if (!geo.hasOwnProperty('coordinates') ||
+                !coords ||
+                !Array.isArray(coords) ||
+                coords.length < 2 ||
+                coords[0] == null || coords[1] == null) {
+                delete propertyData.locationGeo;
+                console.log('Removed invalid locationGeo:', geo);
+            }
+        }
+
+        // Create the property
+        const property = new Property(propertyData);
+        await property.save();
+
+        // Increment user's property listing count
+        const User = (await import('../models/user.js')).default;
+        await User.findByIdAndUpdate(userId, {
+            $inc: {
+                TotalPropertyListings: 1,
+                ActiveListings: 1
+            }
+        });
+
+        // Transform property to listing format for frontend
+        const listing = {
+            id: property._id.toString(),
+            type: 'property',
+            title: property.title,
+            description: property.description,
+            category: property.category,
+            address: property.address || `${property.city}, ${property.state}`,
+            city: property.city,
+            state: property.state,
+            country: property.country,
+            price: property.price?.perMonth || property.price?.perDay || 0,
+            priceType: property.price?.perMonth ? 'month' : 'day',
+            currency: property.price?.currency || 'INR',
+            image: property.images?.[0] || null,
+            images: property.images || [],
+            status: property.status,
+            available: property.available,
+            featured: property.Featured,
+            rating: property.rating?.avg || 0,
+            reviewCount: property.rating?.count || 0,
+            bookings: 0,
+            views: 0,
+            bedrooms: property.bedrooms,
+            bathrooms: property.bathrooms,
+            areaSqft: property.areaSqft,
+            furnished: property.furnished,
+            amenities: property.amenities,
+            createdAt: property.createdAt,
+            updatedAt: property.updatedAt,
+        };
+
+        console.log('✅ Property listing created:', property._id);
+
+        return res.status(201).json({
+            success: true,
+            listing,
+            message: 'Property listing created successfully'
+        });
+
+    } catch (error) {
+        console.error('Error creating property listing:', error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Create a new vehicle listing
+ * POST /api/owner/vehicle
+ */
+export const createVehicleListing = async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Not authenticated' });
+        }
+
+        const vehicleData = {
+            ...req.body,
+            ownerId: userId,
+            status: 'active',
+            available: true,
+        };
+
+        // Create the vehicle
+        const vehicle = new Vehicle(vehicleData);
+        await vehicle.save();
+
+        // Increment user's vehicle listing count
+        const User = (await import('../models/user.js')).default;
+        await User.findByIdAndUpdate(userId, {
+            $inc: {
+                TotalVehicleListings: 1,
+                ActiveListings: 1
+            }
+        });
+
+        // Transform vehicle to listing format for frontend
+        const listing = {
+            id: vehicle._id.toString(),
+            type: 'vehicle',
+            title: `${vehicle.make} ${vehicle.model} (${vehicle.year})`,
+            description: `${vehicle.vehicleType} - ${vehicle.fuelType || 'N/A'} - ${vehicle.transmission || 'N/A'}`,
+            category: vehicle.vehicleType,
+            address: vehicle.location?.address || `${vehicle.location?.city}, ${vehicle.location?.state}`,
+            city: vehicle.location?.city,
+            state: vehicle.location?.state,
+            country: vehicle.location?.country,
+            price: vehicle.price?.perDay || vehicle.price?.perHour || 0,
+            priceType: vehicle.price?.perDay ? 'day' : 'hour',
+            currency: vehicle.price?.currency || 'INR',
+            image: vehicle.photos?.[0] || null,
+            images: vehicle.photos || [],
+            status: vehicle.status,
+            available: vehicle.available,
+            featured: vehicle.Featured,
+            rating: vehicle.rating?.avg || 0,
+            reviewCount: vehicle.rating?.count || 0,
+            bookings: 0,
+            views: 0,
+            vehicleType: vehicle.vehicleType,
+            make: vehicle.make,
+            model: vehicle.model,
+            year: vehicle.year,
+            fuelType: vehicle.fuelType,
+            transmission: vehicle.transmission,
+            seats: vehicle.seats,
+            color: vehicle.color,
+            mileage: vehicle.mileage,
+            createdAt: vehicle.createdAt,
+            updatedAt: vehicle.updatedAt,
+        };
+
+        console.log('✅ Vehicle listing created:', vehicle._id);
+
+        return res.status(201).json({
+            success: true,
+            listing,
+            message: 'Vehicle listing created successfully'
+        });
+
+    } catch (error) {
+        console.error('Error creating vehicle listing:', error.message);
+        return res.status(500).json({ success: false, message: error.message });
+    }
+};

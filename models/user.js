@@ -16,6 +16,10 @@ const UserSchema = new Schema({
   TotalBookings: { type: Number, default: 0 },
   AvailableBalance: { type: Number, default: 0 },
 
+  // Separate counts for properties and vehicles
+  TotalPropertyListings: { type: Number, default: 0 },
+  TotalVehicleListings: { type: Number, default: 0 },
+
   // Profile & KYC
   avatar: String,
   banner: String,
