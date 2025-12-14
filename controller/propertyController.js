@@ -37,9 +37,31 @@ export const searchItems = async (req, res) => {
 
     // Fetch properties with random ordering
     // Using MongoDB aggregation for better randomization
+    // Only return card-essential fields for optimized list loading
     const results = await Property.aggregate([
       { $match: filter },
-      { $sample: { size: Math.min(total - excludeIdsArray.length, limitNum) } }  // Random sample
+      { $sample: { size: Math.min(total - excludeIdsArray.length, limitNum) } },
+      {
+        $project: {
+          _id: 1,
+          title: 1,
+          images: { $slice: ['$images', 1] }, // Only first image for card
+          'price.perMonth': 1,
+          'price.perDay': 1,
+          'rating.avg': 1,
+          'rating.count': 1,
+          city: 1,
+          state: 1,
+          address: 1,
+          category: 1,
+          categoryType: 1,
+          bedrooms: 1,
+          bathrooms: 1,
+          areaSqft: 1,
+          Featured: 1,
+          available: 1
+        }
+      }
     ]);
 
     console.log(`✅ Found ${results.length} featured properties (page ${pageNum}, excluded: ${excludeIdsArray.length})`);

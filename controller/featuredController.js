@@ -147,10 +147,27 @@ export const getFeaturedPropertiesOnly = async (req, res) => {
         }
       },
       {
+        // Only return card-essential fields for optimized list loading
         $project: {
-          __v: 0,
-          'owner.password': 0,
-          'owner.__v': 0
+          _id: 1,
+          title: 1,
+          images: { $slice: ['$images', 1] }, // Only first image for card
+          'price.perMonth': 1,
+          'price.perDay': 1,
+          'rating.avg': 1,
+          'rating.count': 1,
+          city: 1,
+          state: 1,
+          address: 1,
+          category: 1,
+          categoryType: 1,
+          bedrooms: 1,
+          bathrooms: 1,
+          areaSqft: 1,
+          Featured: 1,
+          available: 1,
+          'owner.name': 1,
+          'owner.avatar': 1
         }
       }
     ];
@@ -239,10 +256,28 @@ export const getFeaturedVehiclesOnly = async (req, res) => {
         }
       },
       {
+        // Only return card-essential fields for optimized list loading
         $project: {
-          __v: 0,
-          'owner.password': 0,
-          'owner.__v': 0
+          _id: 1,
+          make: 1,
+          model: 1,
+          year: 1,
+          photos: { $slice: ['$photos', 1] }, // Only first photo for card
+          'price.perDay': 1,
+          'price.perHour': 1,
+          'rating.avg': 1,
+          'rating.count': 1,
+          'location.city': 1,
+          'location.state': 1,
+          'location.address': 1,
+          vehicleType: 1,
+          seats: 1,
+          transmission: 1,
+          fuelType: 1,
+          Featured: 1,
+          available: 1,
+          'owner.name': 1,
+          'owner.avatar': 1
         }
       }
     ];

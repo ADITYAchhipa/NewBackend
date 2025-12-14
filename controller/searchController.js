@@ -155,9 +155,13 @@ export const getPaginatedSearchResults = async (req, res) => {
     // Get total count
     const total = await Model.countDocuments(baseQuery);
 
-    // Fetch ALL matching items for proper sorting (we'll paginate after sorting)
-    // For large datasets, consider caching or limiting to first N items
-    const allItems = await Model.find(baseQuery).lean();
+    // Fetch matching items with only required fields for sorting and display
+    // This reduces memory usage by not loading full documents
+    const selectFields = type === 'vehicle'
+      ? '_id make model photos price rating location vehicleType seats transmission fuelType Featured available latitude longitude'
+      : '_id title images price rating city state address category categoryType bedrooms bathrooms areaSqft Featured available latitude longitude';
+
+    const allItems = await Model.find(baseQuery).select(selectFields).lean();
 
     // Calculate scores and sort based on selected option
     let scoredItems = allItems.map(item => {

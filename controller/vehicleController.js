@@ -39,9 +39,32 @@ export const searchItems = async (req, res) => {
 
     // Fetch vehicles with random ordering
     // Using MongoDB aggregation for better randomization
+    // Only return card-essential fields for optimized list loading
     const results = await Vehicle.aggregate([
       { $match: filter },
-      { $sample: { size: Math.min(total - excludeIdsArray.length, limitNum) } }  // Random sample
+      { $sample: { size: Math.min(total - excludeIdsArray.length, limitNum) } },
+      {
+        $project: {
+          _id: 1,
+          make: 1,
+          model: 1,
+          year: 1,
+          photos: { $slice: ['$photos', 1] }, // Only first photo for card
+          'price.perDay': 1,
+          'price.perHour': 1,
+          'rating.avg': 1,
+          'rating.count': 1,
+          'location.city': 1,
+          'location.state': 1,
+          'location.address': 1,
+          vehicleType: 1,
+          seats: 1,
+          transmission: 1,
+          fuelType: 1,
+          Featured: 1,
+          available: 1
+        }
+      }
     ]);
 
     console.log(`✅ Found ${results.length} featured vehicles (page ${pageNum}, excluded: ${excludeIdsArray.length})`);
