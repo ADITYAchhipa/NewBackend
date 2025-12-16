@@ -21,35 +21,45 @@ import authUser from '../middleware/authUser.js';
 import { upload } from '../config/multer.js';
 import { otpRateLimiter, loginRateLimiter } from '../middleware/rateLimiter.js';
 import { verifyCaptcha, validateFingerprint, progressiveDelay, sanitizeInput } from '../middleware/security.js';
+import {
+    preventNoSQLInjection,
+    sanitizeRequest,
+    validateRegistration,
+    validateLogin,
+    validateEmail,
+    validateOtpVerification
+} from '../middleware/inputValidator.js';
 
 const userRouter = express.Router();
 console.log("User Routes Loaded");
 
-// Apply input sanitization to all routes
-userRouter.use(sanitizeInput);
+// Apply security middleware to all routes
+userRouter.use(preventNoSQLInjection); // Block NoSQL injection attempts
+userRouter.use(sanitizeRequest); // Deep sanitize all inputs
+userRouter.use(sanitizeInput); // Legacy sanitization (kept for compatibility)
 
 // ============ PUBLIC ROUTES ============
 
 // Registration (legacy - direct registration, kept for backward compatibility)
-userRouter.post('/register', register);
+userRouter.post('/register', validateRegistration, register);
 
 // NEW: Secure OTP-based registration flow
-// Step 1: Request OTP - rate limited (3/hour) + captcha verified
-userRouter.post('/request-otp', otpRateLimiter, verifyCaptcha, validateFingerprint, requestOtp);
+// Step 1: Request OTP - rate limited (3/hour) + captcha verified + validated
+userRouter.post('/request-otp', validateRegistration, otpRateLimiter, verifyCaptcha, validateFingerprint, requestOtp);
 
 // Step 2: Verify OTP and complete registration - with progressive delay
-userRouter.post('/verify-otp', progressiveDelay, verifyAndRegister);
+userRouter.post('/verify-otp', validateOtpVerification, progressiveDelay, verifyAndRegister);
 
 // Legacy OTP routes (deprecated, kept for backward compatibility)
 userRouter.post('/otp', otpRateLimiter, otp);
 userRouter.post('/verify', verify);
 
-// Login - rate limited + progressive delay on failed attempts
-userRouter.post('/login', loginRateLimiter, progressiveDelay, login);
+// Login - validated + rate limited + progressive delay on failed attempts
+userRouter.post('/login', validateLogin, loginRateLimiter, progressiveDelay, login);
 
 // Forgot Password
-userRouter.post('/ForgotPassword', otpRateLimiter, forgot);
-userRouter.post('/forgot', otpRateLimiter, forgot); // alias for lowercase route
+userRouter.post('/ForgotPassword', validateEmail, otpRateLimiter, forgot);
+userRouter.post('/forgot', validateEmail, otpRateLimiter, forgot); // alias for lowercase route
 
 // Logout
 userRouter.post('/logout', logout);

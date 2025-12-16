@@ -86,6 +86,8 @@ app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for im
 app.use(cors({ origin: true, credentials: true })); // enable CORS with credentials
 
 // Security middleware
+// Note: express-mongo-sanitize removed due to Express 5 compatibility issues
+// NoSQL injection protection is handled by inputValidator.js middleware on routes
 app.use(helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin for images
     contentSecurityPolicy: false // Disable CSP for development
