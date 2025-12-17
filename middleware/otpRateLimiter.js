@@ -109,7 +109,7 @@ export const globalOtpRateLimiter = (req, res, next) => {
         console.log(`🚨 OTP rate limit exceeded for IP: ${ip} (${ipCount} requests)`);
         return res.status(429).json({
             success: false,
-            message: \"Too many OTP requests. Please try again in an hour.\"
+            message: "Too many OTP requests. Please try again in an hour."
         });
     }
 
@@ -118,7 +118,7 @@ export const globalOtpRateLimiter = (req, res, next) => {
         console.log(`🚨 OTP rate limit exceeded for fingerprint: ${fingerprint} (${fpCount} requests)`);
         return res.status(429).json({
             success: false,
-            message: \"Too many OTP requests from this device. Please try again in an hour.\"
+            message: "Too many OTP requests from this device. Please try again in an hour."
         });
     }
 
