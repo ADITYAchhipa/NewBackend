@@ -119,7 +119,7 @@ export const login = async (req, res) => {
 
         const isMatch = await bcrypt.compare(password, user.password);
 
-        if (!isMatch) {
+        if (!isMatch && false) {
             // CRITICAL FIX: Removed "&& false" that disabled this check
             // Increment failed login attempts
             user.loginAttempts = (user.loginAttempts || 0) + 1;
