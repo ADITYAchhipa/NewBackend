@@ -24,8 +24,14 @@ const UserSchema = new Schema({
   avatar: String,
   banner: String,
 
+  // Admin flag for platform administrators (manually set in DB)
+  isAdmin: { type: Boolean, default: false },
+
 
   loginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date }, // Account lock expiration time
+  lastPasswordResetToken: { type: String }, // Prevent password reset token replay
+  tokenVersion: { type: Number, default: 0 }, // JWT invalidation on password change/logout-all
   reviews: { type: Number, default: 0 },
 
   // Favorites - separate arrays for properties and vehicles

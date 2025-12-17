@@ -1,6 +1,7 @@
 // controllers/search.controller.js
 import Vehicle from '../models/vehicle.js';
 import Property from '../models/property.js';
+import { escapeRegex } from '../utils/security.js';
 
 export const searchItems = async (req, res) => {
   try {
@@ -60,7 +61,7 @@ export const getPaginatedSearchResults = async (req, res) => {
     } = req.query;
 
     const pageNum = parseInt(page) || 1;
-    const limitNum = parseInt(limit) || 20;
+    const limitNum = Math.min(parseInt(limit) || 20, 50); // Hard cap at 50 items per page
     const excludeIds = exclude ? exclude.split(',').filter(id => id.trim()) : [];
     const userLat = parseFloat(lat) || null;
     const userLng = parseFloat(lng) || null;
@@ -80,9 +81,18 @@ export const getPaginatedSearchResults = async (req, res) => {
     if (query && query.trim()) {
       const keywords = query.trim().split(/\s+/).filter(k => k.length > 0);
 
+      // SECURITY: Limit query complexity to prevent CPU DoS
+      if (keywords.length > 5) {
+        return res.status(400).json({
+          success: false,
+          message: "Search query too complex. Please use maximum 5 keywords."
+        });
+      }
+
       if (keywords.length === 1) {
         // Single keyword - search across all fields (OR)
-        const keyword = keywords[0];
+        // SECURITY: Escape regex to prevent ReDoS
+        const keyword = escapeRegex(keywords[0]);
         baseQuery.$or = [
           { title: { $regex: keyword, $options: 'i' } },
           { name: { $regex: keyword, $options: 'i' } },
@@ -96,18 +106,22 @@ export const getPaginatedSearchResults = async (req, res) => {
       } else {
         // Multiple keywords - each keyword must match in at least one field (AND of ORs)
         // Example: "apartment udaipur" -> must match "apartment" in any field AND "udaipur" in any field
-        baseQuery.$and = keywords.map(keyword => ({
-          $or: [
-            { title: { $regex: keyword, $options: 'i' } },
-            { name: { $regex: keyword, $options: 'i' } },
-            { description: { $regex: keyword, $options: 'i' } },
-            { city: { $regex: keyword, $options: 'i' } },
-            { state: { $regex: keyword, $options: 'i' } },
-            { address: { $regex: keyword, $options: 'i' } },
-            { category: { $regex: keyword, $options: 'i' } },
-            { categoryType: { $regex: keyword, $options: 'i' } }
-          ]
-        }));
+        // SECURITY: Escape each keyword regex to prevent ReDoS
+        baseQuery.$and = keywords.map(kw => {
+          const keyword = escapeRegex(kw);
+          return {
+            $or: [
+              { title: { $regex: keyword, $options: 'i' } },
+              { name: { $regex: keyword, $options: 'i' } },
+              { description: { $regex: keyword, $options: 'i' } },
+              { city: { $regex: keyword, $options: 'i' } },
+              { state: { $regex: keyword, $options: 'i' } },
+              { address: { $regex: keyword, $options: 'i' } },
+              { category: { $regex: keyword, $options: 'i' } },
+              { categoryType: { $regex: keyword, $options: 'i' } }
+            ]
+          };
+        });
       }
     }
 
@@ -116,15 +130,12 @@ export const getPaginatedSearchResults = async (req, res) => {
     let userFavoriteIds = [];
     let userCity = null;
 
-    // Check if user is authenticated (optional - extract from token if available)
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const token = authHeader.split(' ')[1];
-        const jwt = await import('jsonwebtoken');
-        const decoded = jwt.default.verify(token, process.env.JWT_SECRET);
-        const userId = decoded.id;
+    // Check if user is authenticated (userId set by authUser middleware if present)
+    // Note: This route can work without auth, so req.userId might be undefined
+    const userId = req.userId;
 
+    if (userId) {
+      try {
         // Get user's favorites and city
         const User = (await import('../models/user.js')).default;
         const user = await User.findById(userId).lean();
@@ -147,13 +158,17 @@ export const getPaginatedSearchResults = async (req, res) => {
           }
         }
       } catch (err) {
-        // Token invalid or expired - continue without user data
-        console.log('Auth optional: proceeding without user context');
+        // Error fetching user data - continue without personalization
+        console.log('Error fetching user personalization data:', err.message);
       }
     }
 
     // Get total count
     const total = await Model.countDocuments(baseQuery);
+
+    // PERFORMANCE: Cap working set to prevent memory exhaustion
+    // Prevents DoS when searching large datasets (10k+ listings)
+    const MAX_CANDIDATES = 1000;
 
     // Fetch matching items with only required fields for sorting and display
     // This reduces memory usage by not loading full documents
@@ -161,7 +176,11 @@ export const getPaginatedSearchResults = async (req, res) => {
       ? '_id make model photos price rating location vehicleType seats transmission fuelType Featured available latitude longitude'
       : '_id title images price rating city state address category categoryType bedrooms bathrooms areaSqft Featured available latitude longitude';
 
-    const allItems = await Model.find(baseQuery).select(selectFields).lean();
+    const allItems = await Model
+      .find(baseQuery)
+      .select(selectFields)
+      .limit(MAX_CANDIDATES) // Cap candidates to prevent RAM spike
+      .lean();
 
     // Calculate scores and sort based on selected option
     let scoredItems = allItems.map(item => {
@@ -192,8 +211,10 @@ export const getPaginatedSearchResults = async (req, res) => {
         if (userFavoriteIds.includes(itemId)) score += 500;
         if (userCity && item.city && item.city.toLowerCase() === userCity.toLowerCase()) score += 100;
         if (item.Featured) score += 50;
-        // Add small random factor to break ties
-        score += Math.random() * 10;
+        // PERFORMANCE: Only add randomness for authenticated users to reduce CPU usage
+        if (userId) {
+          score += Math.random() * 10;
+        }
       }
 
       return {

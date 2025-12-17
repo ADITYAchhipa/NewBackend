@@ -4,6 +4,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import 'dotenv/config';
 import { sendOtp, sendWelcome, sendPasswordResetOtp } from '../services/resendService.js';
+import fs from 'fs';
+import logger from '../utils/logger.js';
 
 
 
@@ -12,8 +14,18 @@ import { sendOtp, sendWelcome, sendPasswordResetOtp } from '../services/resendSe
 
 
 export const register = async (req, res) => {
+    // SECURITY: Legacy endpoint - disable in production
+    // Use /request-otp and /verify-otp endpoints instead
+    if (process.env.NODE_ENV === 'production') {
+        logger.warn('Legacy /register endpoint accessed in production');
+        return res.status(410).json({
+            success: false,
+            message: 'This endpoint is deprecated. Please use /request-otp and /verify-otp'
+        });
+    }
+
     try {
-        console.log(req.body)
+        logger.dev('Registration request:', req.body);
         const { name, email, password, phone } = req.body;
         const { referralCode } = req.body || '';
         if (!name || !email || !password || !phone) {
@@ -21,24 +33,25 @@ export const register = async (req, res) => {
             return res.json({ success: false, message: "Missing Details" })
         }
 
-        // Check for duplicate email
-        const existingEmail = await User.findOne({ email })
-        if (existingEmail) {
-            console.log("User with this email exists");
-            return res.json({ success: false, message: "User with this email already exists" })
-        }
+        // SECURITY: Check for duplicate email OR phone in one query to prevent enumeration
+        // Use generic message to prevent user enumeration attack
+        const existingUser = await User.findOne({
+            $or: [{ email }, { phone }]
+        });
 
-        // Check for duplicate phone
-        const existingPhone = await User.findOne({ phone: phone })
-        if (existingPhone) {
-            console.log("User with this phone number exists");
-            return res.json({ success: false, message: "User with this phone number already exists" })
+        if (existingUser) {
+            // Generic message - don't reveal which field (email/phone) already exists
+            logger.warn(`Registration attempt with existing credentials: ${email}`);
+            return res.json({
+                success: false,
+                message: "An account with these details already exists"
+            });
         }
 
         const hashedPasword = await bcrypt.hash(password, 10)
 
         const user = await User.create({ name, email, password: hashedPasword, phone, ReferralCode: referralCode })
-        console.log("User registered:", user);
+        logger.userAction('REGISTER', user._id, { email: user.email });
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 
         res.cookie('token', token, {
@@ -73,7 +86,7 @@ export const updatecountry = async (req, res) => {
 // Login user : api/user/login
 
 export const login = async (req, res) => {
-    console.log("Login function called");
+    logger.dev("Login function called");
     try {
         const { email, password } = req.body;
         if (!email || !password) {
@@ -84,24 +97,71 @@ export const login = async (req, res) => {
 
         // Generic error message to prevent user enumeration
         if (!user) {
+            // Timing normalization: add delay to match DB lookup time
+            // Prevents timing-based user enumeration
+            await new Promise(r => setTimeout(r, 300));
+
             // Record failed attempt if progressive delay middleware attached
             if (req.recordFailedAttempt) req.recordFailedAttempt();
             return res.json({ success: false, message: "Invalid email or password" });
         }
 
+        // Check if account is temporarily locked
+        if (user.lockUntil && user.lockUntil > Date.now()) {
+            const minutesRemaining = Math.ceil((user.lockUntil - Date.now()) / 60000);
+            // Use generic message to prevent user enumeration
+            logger.warn(`Locked account login attempt: ${email} (${minutesRemaining} min remaining)`);
+            return res.json({
+                success: false,
+                message: "Invalid email or password"
+            });
+        }
+
         const isMatch = await bcrypt.compare(password, user.password);
 
-        if (!isMatch && false) {
+        if (!isMatch) {
+            // CRITICAL FIX: Removed "&& false" that disabled this check
+            // Increment failed login attempts
+            user.loginAttempts = (user.loginAttempts || 0) + 1;
+
+            // Lock account after 5 failed attempts for 30 minutes
+            if (user.loginAttempts >= 5) {
+                user.lockUntil = new Date(Date.now() + 30 * 60 * 1000);
+                await user.save();
+
+                logger.warn(`Account locked: ${email} (${user.loginAttempts} failed attempts)`);
+
+                return res.status(423).json({
+                    success: false,
+                    message: "Account temporarily locked due to multiple failed login attempts. Try again in 30 minutes."
+                });
+            }
+
+            await user.save();
+
             // Record failed attempt for progressive delay
             if (req.recordFailedAttempt) req.recordFailedAttempt();
+
             return res.json({ success: false, message: "Invalid email or password" });
+        }
+
+        // Successful login - reset failed attempts and lock
+        if (user.loginAttempts > 0 || user.lockUntil) {
+            user.loginAttempts = 0;
+            user.lockUntil = null;
+            await user.save();
         }
 
         // Reset failed attempts on successful login
         if (req.resetFailedAttempts) req.resetFailedAttempts();
 
-        console.log("✅ Login successful for:", email);
-        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        logger.userAction('LOGIN', user._id);
+
+        // SECURITY: Include tokenVersion in JWT for session invalidation
+        const token = jwt.sign({
+            id: user._id,
+            v: user.tokenVersion || 0
+        }, process.env.JWT_SECRET, { expiresIn: '7d' });
 
         res.cookie('token', token, {
             httpOnly: true,
@@ -110,9 +170,15 @@ export const login = async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
         });
 
+        // Generate CSRF token for protection against CSRF attacks
+        const { generateCsrfToken } = await import('../middleware/csrfProtection.js');
+        generateCsrfToken(res);
+
+        // SECURITY FIX: Never send JWT in JSON response (XSS risk)
+        // Frontend doesn't need it - auth happens via cookies
         return res.json({
             success: true,
-            token,
+            // Token removed from response - frontend uses cookies only
             user: {
                 email: user.email,
                 name: user.name,
@@ -126,7 +192,7 @@ export const login = async (req, res) => {
             }
         });
     } catch (error) {
-        console.log("Login error:", error.message);
+        logger.error("Login error:", error.message);
         res.json({ success: false, message: "An error occurred. Please try again." });
     }
 }
@@ -155,7 +221,7 @@ export const isAuth = async (req, res) => {
  */
 export const requestOtp = async (req, res) => {
     try {
-        console.log('📧 OTP Request:', req.body.email);
+        logger.userAction('OTP_REQUEST', 'pending');
         const { name, email, password, phone, fingerprint, referralCode } = req.body;
 
         // Validate required fields
@@ -180,7 +246,7 @@ export const requestOtp = async (req, res) => {
 
         // Generate 6-digit OTP (more secure than 4-digit)
         const otpCode = Math.floor(100000 + Math.random() * 900000);
-        console.log('🔐 Generated OTP:', otpCode); // Remove in production!
+        logger.dangerous('OTP generated', otpCode); // DEV ONLY - never logged in production
 
         // Hash password and OTP
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -221,7 +287,7 @@ export const requestOtp = async (req, res) => {
             }
         }
 
-        console.log('✅ OTP request successful for:', normalizedEmail);
+        logger.info('✅ OTP sent successfully');
 
         return res.json({
             success: true,
@@ -265,6 +331,16 @@ export const verifyAndRegister = async (req, res) => {
         if (!pendingReg) {
             if (req.recordFailedAttempt) req.recordFailedAttempt();
             return res.json({ success: false, message: "Registration session not found. Please request a new OTP." });
+        }
+
+        // SECURITY: Verify IP address to prevent token theft and brute-force from different IPs
+        const clientIp = req.ip || req.connection?.remoteAddress || 'unknown';
+        if (pendingReg.ipAddress && pendingReg.ipAddress !== clientIp) {
+            logger.warn(`OTP verification from different IP. Original: ${pendingReg.ipAddress}, Current: ${clientIp}`);
+            return res.json({
+                success: false,
+                message: "Security verification failed. Please request a new OTP."
+            });
         }
 
         // Check if OTP expired
@@ -328,7 +404,7 @@ export const verifyAndRegister = async (req, res) => {
             console.error('Failed to send welcome email:', err)
         );
 
-        console.log('✅ User registered successfully:', user.email);
+        logger.userAction('REGISTER_COMPLETE', user._id);
 
         return res.json({
             success: true,
@@ -357,8 +433,17 @@ export const otp = async (req, res) => {
 
 
 //verify otp : /api/user/verify
-
+// DEPRECATED: Use /verify-otp instead
 export const verify = async (req, res) => {
+    // SECURITY: Legacy endpoint - disable in production
+    if (process.env.NODE_ENV === 'production') {
+        logger.warn('Legacy /verify endpoint accessed in production');
+        return res.status(410).json({
+            success: false,
+            message: 'This endpoint is deprecated. Please use /verify-otp'
+        });
+    }
+
     try {
         const { otp } = req.body;
         const otpToken = req.cookies.otp_token;
@@ -373,7 +458,7 @@ export const verify = async (req, res) => {
         try {
 
             const tokenDecode = jwt.verify(otpToken, process.env.JWT_SECRET);
-            console.log("Decoded OTP:", tokenDecode);
+            logger.dev("OTP token decoded"); // Don't log token content
             const isMatch = await bcrypt.compare(String(otp), tokenDecode.id);
 
             if (isMatch) {
@@ -416,18 +501,25 @@ export const verify = async (req, res) => {
 
 export const logout = async (req, res) => {
     try {
+        // Clear auth cookie
         res.clearCookie('token', {
             httpOnly: true,
             secure: process.env.NODE_ENV === 'production',
             sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+        });
 
-        })
+        // SECURITY FIX: Clear CSRF token cookie on logout
+        res.clearCookie('csrfToken', {
+            httpOnly: false,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
+        });
 
-        return res.json({ success: true, message: "Logged Out" })
+        return res.json({ success: true, message: "Logged Out" });
     }
     catch (error) {
         console.log(error.message);
-        return res.json({ success: false, message: error.message })
+        return res.json({ success: false, message: error.message });
     }
 }
 
@@ -445,6 +537,11 @@ export const changePasswordProfile = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
         user.password = hashedPassword;
         await user.save();
+
+        // SECURITY: Rotate CSRF token after password change
+        const { generateCsrfToken } = await import('../middleware/csrfProtection.js');
+        generateCsrfToken(res);
+
         console.log(" password changed")
         return res.json({ success: true, message: "Password changed successfully" })
     } catch (error) {
@@ -469,7 +566,7 @@ export const forgot = async (req, res) => {
         // Don't reveal if email exists - always return success
         // (prevents user enumeration attacks)
         if (!user) {
-            console.log('Password reset requested for non-existent email:', normalizedEmail);
+            logger.dev('Password reset requested for non-existent email');
             return res.json({
                 success: true,
                 message: "If an account exists with that email, a reset code has been sent."
@@ -478,7 +575,7 @@ export const forgot = async (req, res) => {
 
         // Generate a random 6-digit OTP
         const otpCode = Math.floor(100000 + Math.random() * 900000);
-        console.log('🔐 Password reset OTP:', otpCode); // Remove in production!
+        logger.dangerous('Password reset OTP generated', otpCode); // DEV ONLY
 
         const hashedOtp = await bcrypt.hash(String(otpCode), 10);
 
@@ -512,40 +609,8 @@ export const forgot = async (req, res) => {
     }
 }
 
-export const resetPasswordN = async (req, res) => {
-    try {
-        const { email, otp, newPassword, resetToken } = req.body;
-        if (!email || !otp || !newPassword || !resetToken) {
-            return res.json({ success: false, message: "Missing Details" });
-        }
-
-        let decoded;
-        try {
-            decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
-        } catch (error) {
-            return res.json({ success: false, message: "Reset token is invalid or expired" });
-        }
-
-        const user = await User.findById(decoded.id).select('+password');
-        if (!user || user.email !== email) {
-            return res.json({ success: false, message: "Invalid email" });
-        }
-
-        const isMatch = await bcrypt.compare(String(otp), decoded.otp);
-        if (!isMatch) {
-            return res.json({ success: false, message: "Invalid OTP" });
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        user.password = hashedPassword;
-        await user.save();
-
-        return res.json({ success: true, message: "Password reset successful" });
-    } catch (error) {
-        console.log(error.message);
-        return res.json({ success: false, message: error.message });
-    }
-}
+// REMOVED: resetPasswordN - Duplicate endpoint removed for security
+// Use resetPassword instead
 
 export const resetPassword = async (req, res) => {
     try {
@@ -566,6 +631,16 @@ export const resetPassword = async (req, res) => {
             return res.json({ success: false, message: "Invalid email" });
         }
 
+        // SECURITY: Check if reset token was already used (prevent replay attacks)
+        const tokenFingerprint = `${decoded.id}_${decoded.otp}`;
+        if (user.lastPasswordResetToken === tokenFingerprint) {
+            logger.warn(`Password reset token replay attempt: ${email}`);
+            return res.json({
+                success: false,
+                message: "Reset link already used. Please request a new one."
+            });
+        }
+
         const isMatch = await bcrypt.compare(String(otp), decoded.otp);
         if (!isMatch) {
             return res.json({ success: false, message: "Invalid OTP" });
@@ -573,7 +648,17 @@ export const resetPassword = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         user.password = hashedPassword;
+
+        // SECURITY: Invalidate all sessions on password reset
+        user.tokenVersion = (user.tokenVersion || 0) + 1;
+
+        // Mark this reset token as used
+        user.lastPasswordResetToken = tokenFingerprint;
         await user.save();
+
+        // SECURITY: Rotate CSRF token after password reset
+        const { generateCsrfToken } = await import('../middleware/csrfProtection.js');
+        generateCsrfToken(res);
 
         return res.json({ success: true, message: "Password reset successful" });
     } catch (error) {
@@ -597,7 +682,7 @@ export const updateCountry = async (req, res) => {
         user.Country = country;
         await user.save();
 
-        console.log('Country updated to ' + country + ' for user ' + user.email);
+        logger.userAction('UPDATE_COUNTRY', user._id, { country });
         return res.json({
             success: true,
             message: "Country updated successfully",
@@ -631,14 +716,26 @@ export const updateBanner = async (req, res) => {
         const { v2: cloudinary } = await import('cloudinary');
         const uploadResult = await cloudinary.uploader.upload(req.file.path, {
             folder: 'user_banners',
-            resource_type: 'image'
+            resource_type: 'image',
+            fetch_format: 'auto', // Equivalent to f_auto
+            quality: 'auto', // Equivalent to q_auto
+            transformation: [
+                { width: 4000, height: 4000, crop: 'limit' } // Prevent large images
+            ]
         });
+
+        // Clean up temporary file
+        try {
+            fs.unlinkSync(req.file.path);
+        } catch (err) {
+            console.log('Could not delete temp file:', err.message);
+        }
 
         // Update user banner URL
         user.banner = uploadResult.secure_url;
         await user.save();
 
-        console.log('Banner updated for user ' + user.email);
+        logger.userAction('UPDATE_BANNER', user._id);
         return res.json({
             success: true,
             message: "Banner updated successfully",
@@ -673,14 +770,26 @@ export const updateProfileImage = async (req, res) => {
         const { v2: cloudinary } = await import('cloudinary');
         const uploadResult = await cloudinary.uploader.upload(req.file.path, {
             folder: 'user_profiles',
-            resource_type: 'image'
+            resource_type: 'image',
+            fetch_format: 'auto', // Equivalent to f_auto
+            quality: 'auto', // Equivalent to q_auto
+            transformation: [
+                { width: 4000, height: 4000, crop: 'limit' } // Prevent large images
+            ]
         });
+
+        // Clean up temporary file
+        try {
+            fs.unlinkSync(req.file.path);
+        } catch (err) {
+            console.log('Could not delete temp file:', err.message);
+        }
 
         // Update user avatar URL
         user.avatar = uploadResult.secure_url;
         await user.save();
 
-        console.log('Profile image updated for user ' + user.email);
+        logger.userAction('UPDATE_AVATAR', user._id);
         return res.json({
             success: true,
             message: "Profile image updated successfully",
@@ -723,30 +832,41 @@ export const updateDetails = async (req, res) => {
             return res.json({ success: true, message: "No changes detected" });
         }
 
-        // Check if email is being changed and if it's already taken by another user
+        // SECURITY FIX: Prevent email/phone changes without re-verification
+        // This prevents account takeover if session is compromised
         if (!isEmailSame) {
-            const existingUser = await User.findOne({ email, _id: { $ne: req.userId } });
-            if (existingUser) {
-                return res.json({ success: false, message: "Email is already in use by another user" });
-            }
+            logger.warn(`Blocked email change attempt for user ${req.userId}`);
+            return res.status(403).json({
+                success: false,
+                message: "Email changes require verification. Please contact support or create a new account."
+            });
         }
 
-        // Check if phone is being changed and if it's already taken by another user
         if (!isPhoneSame) {
-            const existingUser = await User.findOne({ phone, _id: { $ne: req.userId } });
-            if (existingUser) {
-                return res.json({ success: false, message: "Phone number is already in use by another user" });
-            }
+            logger.warn(`Blocked phone change attempt for user ${req.userId}`);
+            return res.status(403).json({
+                success: false,
+                message: "Phone number changes require verification. Please contact support."
+            });
         }
 
-        // Update user details
-        user.name = name;
-        user.email = email;
-        user.phone = phone;
-        user.bio = bio;
+        // SECURITY: Sanitize inputs to prevent XSS attacks
+        const sanitizedName = sanitizeHtml(name, {
+            allowedTags: [],  // No HTML tags allowed in name
+            allowedAttributes: {}
+        });
+
+        const sanitizedBio = sanitizeHtml(bio, {
+            allowedTags: ['b', 'i', 'em', 'strong', 'p', 'br'],  // Only safe formatting
+            allowedAttributes: {}
+        });
+
+        // Only allow name and bio changes
+        user.name = sanitizedName;
+        user.bio = sanitizedBio;
         await user.save();
 
-        console.log('Details updated for user ' + user.email);
+        logger.userAction('UPDATE_DETAILS', user._id);
         return res.json({
             success: true,
             message: "Details updated successfully",

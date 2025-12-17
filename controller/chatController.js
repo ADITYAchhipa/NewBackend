@@ -1,59 +1,102 @@
 import Message from "../models/message.js";
 import User from "../models/user.js";
+import { escapeRegex } from "../utils/security.js";
 
 // Get list of users the current user has chatted with
 export async function getChatContacts(req, res) {
     try {
         const userId = req.userId;
 
-        // Get user with populated propertyOwners
-        const user = await User.findById(userId)
-            .select("propertyOwners")
-            .populate("propertyOwners", "_id name email avatar");
+        // Get user's contact list
+        const user = await User.findById(userId).select("propertyOwners");
 
         if (!user) {
             return res.json({ success: false, message: "User not found" });
         }
 
-        // Get unseen message counts for each contact
-        const unseenMessages = {};
-        const contactsWithLastMessage = [];
-
-        for (const contact of user.propertyOwners || []) {
-            // Count unseen messages from this contact
-            const unseenCount = await Message.countDocuments({
-                senderId: contact._id,
-                receiverId: userId,
-                seen: false
+        if (!user.propertyOwners || user.propertyOwners.length === 0) {
+            return res.json({
+                success: true,
+                contacts: [],
+                unseenMessages: {}
             });
+        }
 
-            if (unseenCount > 0) {
-                unseenMessages[contact._id] = unseenCount;
+        // Optimized aggregation pipeline (replaces N+1 queries)
+        const contactsData = await Message.aggregate([
+            {
+                // Match all messages involving this user and their contacts
+                $match: {
+                    $or: [
+                        { senderId: userId, receiverId: { $in: user.propertyOwners } },
+                        { senderId: { $in: user.propertyOwners }, receiverId: userId }
+                    ]
+                }
+            },
+            {
+                // Sort by creation time (newest first)
+                $sort: { createdAt: -1 }
+            },
+            {
+                // Group by contact to get last message and unseen count
+                $group: {
+                    _id: {
+                        $cond: [
+                            { $eq: ["$senderId", userId] },
+                            "$receiverId",
+                            "$senderId"
+                        ]
+                    },
+                    lastMessage: { $first: "$$ROOT" },
+                    unseenCount: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ["$receiverId", userId] },
+                                        { $eq: ["$seen", false] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        // Get contact details
+        const contactIds = user.propertyOwners;
+        const contacts = await User.find({ _id: { $in: contactIds } })
+            .select("_id name email avatar");
+
+        // Build response with contacts and their message data
+        const contactsMap = new Map(contactsData.map(c => [c._id.toString(), c]));
+        const unseenMessages = {};
+
+        const contactsWithLastMessage = contacts.map(contact => {
+            const data = contactsMap.get(contact._id.toString());
+
+            if (data?.unseenCount > 0) {
+                unseenMessages[contact._id] = data.unseenCount;
             }
 
-            // Get the last message between the two users
-            const lastMessage = await Message.findOne({
-                $or: [
-                    { senderId: userId, receiverId: contact._id },
-                    { senderId: contact._id, receiverId: userId }
-                ]
-            }).sort({ createdAt: -1 });
-
-            contactsWithLastMessage.push({
+            return {
                 _id: contact._id,
                 name: contact.name,
                 email: contact.email,
                 avatar: contact.avatar,
-                lastMessage: lastMessage ? {
-                    text: lastMessage.text,
-                    image: lastMessage.image,
-                    createdAt: lastMessage.createdAt,
-                    isFromMe: lastMessage.senderId.toString() === userId.toString()
+                lastMessage: data?.lastMessage ? {
+                    text: data.lastMessage.text,
+                    image: data.lastMessage.image,
+                    createdAt: data.lastMessage.createdAt,
+                    isFromMe: data.lastMessage.senderId.toString() === userId.toString()
                 } : null
-            });
-        }
+            };
+        });
 
-        // Sort contacts by last message time (most recent first)
+        // Sort by last message time
         contactsWithLastMessage.sort((a, b) => {
             if (!a.lastMessage) return 1;
             if (!b.lastMessage) return -1;
@@ -137,7 +180,13 @@ export async function sendMessage(req, res) {
         let imageUrl;
         if (image) {
             const { v2: cloudinary } = await import('cloudinary');
-            const uploadResponse = await cloudinary.uploader.upload(image);
+            const uploadResponse = await cloudinary.uploader.upload(image, {
+                fetch_format: 'auto',
+                quality: 'auto',
+                transformation: [
+                    { width: 4000, height: 4000, crop: 'limit' }
+                ]
+            });
             imageUrl = uploadResponse.secure_url;
         }
 
@@ -207,9 +256,11 @@ export async function searchUsers(req, res) {
         }
 
         // Search for users whose name contains the query (case-insensitive)
+        // SECURITY: Escape regex to prevent ReDoS
+        const safeQuery = escapeRegex(query);
         const users = await User.find({
             _id: { $ne: currentUserId }, // Exclude current user
-            name: { $regex: query, $options: 'i' } // Case-insensitive substring match
+            name: { $regex: safeQuery, $options: 'i' } // Case-insensitive substring match
         })
             .select("_id name email avatar")
             .limit(20);

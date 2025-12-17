@@ -1,48 +1,75 @@
-import {v2 as cloudinary} from 'cloudinary';    
+import { v2 as cloudinary } from 'cloudinary';
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
+import fs from 'fs';
 //ad product : /api/product/add
 
-export const addProperty = async (req,res)=>{
-    try{
-        let productData= JSON.parse(req.body.productData);
+export const addProperty = async (req, res) => {
+    try {
+        let productData = JSON.parse(req.body.productData);
 
         const images = req.files;
 
         let imagesUrl = await Promise.all(
             images.map(async (image) => {
-                let result=await cloudinary.uploader.upload(image.path, {
-                    resource_type:'image',
+                let result = await cloudinary.uploader.upload(image.path, {
+                    resource_type: 'image',
+                    fetch_format: 'auto', // Equivalent to f_auto
+                    quality: 'auto', // Equivalent to q_auto
+                    transformation: [
+                        { width: 4000, height: 4000, crop: 'limit' } // Prevent large images
+                    ]
                 })
+
+                // Clean up temporary file after successful upload
+                try {
+                    fs.unlinkSync(image.path);
+                } catch (err) {
+                    console.log('Could not delete temp file:', err.message);
+                }
+
                 return result.secure_url;
             })
         );
-        await Property.create({...productData,images:imagesUrl});
-        res.json({success:true,message:"Product Added Successfully"});
-    }catch(error){
-        res.json({success:false,message: error.message});
+        await Property.create({ ...productData, images: imagesUrl });
+        res.json({ success: true, message: "Product Added Successfully" });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
     }
 }
 
 
-export const addVechile = async (req,res)=>{
-    try{
-        let productData= JSON.parse(req.body.productData);
+export const addVechile = async (req, res) => {
+    try {
+        let productData = JSON.parse(req.body.productData);
 
         const images = req.files;
 
         let imagesUrl = await Promise.all(
             images.map(async (image) => {
-                let result=await cloudinary.uploader.upload(image.path, {
-                    resource_type:'image',
+                let result = await cloudinary.uploader.upload(image.path, {
+                    resource_type: 'image',
+                    fetch_format: 'auto', // Equivalent to f_auto
+                    quality: 'auto', // Equivalent to q_auto
+                    transformation: [
+                        { width: 4000, height: 4000, crop: 'limit' } // Prevent large images
+                    ]
                 })
+
+                // Clean up temporary file after successful upload
+                try {
+                    fs.unlinkSync(image.path);
+                } catch (err) {
+                    console.log('Could not delete temp file:', err.message);
+                }
+
                 return result.secure_url;
             })
         );
-        await  Vehicle.create({...productData,photos:imagesUrl});
-        res.json({success:true,message:"Product Added Successfully"});
-    }catch(error){
-        res.json({success:false,message: error.message});
+        await Vehicle.create({ ...productData, photos: imagesUrl });
+        res.json({ success: true, message: "Product Added Successfully" });
+    } catch (error) {
+        res.json({ success: false, message: error.message });
     }
 }
 

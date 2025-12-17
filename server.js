@@ -83,14 +83,78 @@ io.on('connection', (socket) => {
 });
 
 app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for images
-app.use(cors({ origin: true, credentials: true })); // enable CORS with credentials
+
+// SECURITY: Explicit CORS configuration (no wildcards!)
+// Never use origin: true in production - prevents credential theft
+const allowedOrigins = [
+    'http://localhost:3000',  // Local development
+    'http://localhost:5173',  // Vite dev server
+    'http://localhost:4173',  // Vite preview
+    // Add your production frontend URLs here:
+    // 'https://yourfrontend.com',
+    // 'https://app.yourdomain.com'
+];
+
+app.use(cors({
+    origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('❌ CORS blocked origin:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,  // Allow cookies
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
+}));
 
 // Security middleware
 // Note: express-mongo-sanitize removed due to Express 5 compatibility issues
 // NoSQL injection protection is handled by inputValidator.js middleware on routes
 app.use(helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin for images
-    contentSecurityPolicy: false // Disable CSP for development
+    // Allow cross-origin resources (needed for Cloudinary images)
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+
+    // Content Security Policy - enabled in production
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'", "data:"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+        }
+    } : false, // Disabled in development for easier debugging
+
+    // Security headers
+    hsts: {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true
+    },
+
+    // Prevent XSS attacks
+    xssFilter: true,
+
+    // Prevent clickjacking
+    frameguard: { action: 'deny' },
+
+    // Hide X-Powered-By header
+    hidePoweredBy: true,
+
+    // Prevent MIME sniffing
+    noSniff: true,
+
+    // Referrer policy
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' }
 }));
 
 // Trust proxy for accurate client IP (important for rate limiting)

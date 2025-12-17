@@ -1,6 +1,7 @@
 import Kyc from '../models/kyc.js';
 import User from '../models/user.js';
 import { v2 as cloudinary } from 'cloudinary';
+import fs from 'fs';
 
 /**
  * Submit KYC verification
@@ -61,30 +62,66 @@ export const submitKyc = async (req, res) => {
             console.log('Uploading front ID to Cloudinary...');
             const frontIdUpload = await cloudinary.uploader.upload(frontIdFile.path, {
                 folder: 'kyc_documents/front_ids',
-                resource_type: 'image'
+                resource_type: 'image',
+                fetch_format: 'auto',
+                quality: 'auto',
+                transformation: [
+                    { width: 4000, height: 4000, crop: 'limit' }
+                ]
             });
             frontIdUrl = frontIdUpload.secure_url;
             console.log('Front ID uploaded:', frontIdUrl);
+
+            // Clean up temp file
+            try {
+                fs.unlinkSync(frontIdFile.path);
+            } catch (err) {
+                console.log('Could not delete temp file:', err.message);
+            }
 
             // Upload back ID (if provided)
             if (backIdFile) {
                 console.log('Uploading back ID to Cloudinary...');
                 const backIdUpload = await cloudinary.uploader.upload(backIdFile.path, {
                     folder: 'kyc_documents/back_ids',
-                    resource_type: 'image'
+                    resource_type: 'image',
+                    fetch_format: 'auto',
+                    quality: 'auto',
+                    transformation: [
+                        { width: 4000, height: 4000, crop: 'limit' }
+                    ]
                 });
                 backIdUrl = backIdUpload.secure_url;
                 console.log('Back ID uploaded:', backIdUrl);
+
+                // Clean up temp file
+                try {
+                    fs.unlinkSync(backIdFile.path);
+                } catch (err) {
+                    console.log('Could not delete temp file:', err.message);
+                }
             }
 
             // Upload selfie
             console.log('Uploading selfie to Cloudinary...');
             const selfieUpload = await cloudinary.uploader.upload(selfieFile.path, {
                 folder: 'kyc_documents/selfies',
-                resource_type: 'image'
+                resource_type: 'image',
+                fetch_format: 'auto',
+                quality: 'auto',
+                transformation: [
+                    { width: 4000, height: 4000, crop: 'limit' }
+                ]
             });
             selfieUrl = selfieUpload.secure_url;
             console.log('Selfie uploaded:', selfieUrl);
+
+            // Clean up temp file
+            try {
+                fs.unlinkSync(selfieFile.path);
+            } catch (err) {
+                console.log('Could not delete temp file:', err.message);
+            }
 
         } catch (uploadError) {
             console.error('Cloudinary upload error:', uploadError);

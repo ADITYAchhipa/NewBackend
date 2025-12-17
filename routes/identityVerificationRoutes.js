@@ -1,6 +1,7 @@
 import express from 'express';
 import { submitKyc, getKycStatus, updateKycStatus, getAllKyc } from '../controller/kycController.js';
 import authUser from '../middleware/authUser.js';
+import authAdmin from '../middleware/authAdmin.js';
 import { upload } from '../config/multer.js';
 
 const identityVerificationRouter = express.Router();
@@ -27,15 +28,15 @@ identityVerificationRouter.post(
 // GET /api/identity-verification/status
 identityVerificationRouter.get('/status', authUser, getKycStatus);
 
-// Admin routes (these will need admin middleware later)
+// Admin routes (require admin privileges)
 
 // Update KYC status (accept/reject)
 // POST /api/identity-verification/update-status
 // Body: { kycId, status, rejectionReason }
-identityVerificationRouter.post('/update-status', authUser, updateKycStatus);
+identityVerificationRouter.post('/update-status', authUser, authAdmin, updateKycStatus);
 
 // Get all KYC submissions (for admin dashboard)
 // GET /api/identity-verification/all?status=pending&page=1&limit=20
-identityVerificationRouter.get('/all', authUser, getAllKyc);
+identityVerificationRouter.get('/all', authUser, authAdmin, getAllKyc);
 
 export default identityVerificationRouter;
