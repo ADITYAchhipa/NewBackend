@@ -7,38 +7,38 @@ import Vehicle from '../models/vehicle.js';
 // Add a new review (for property or vehicle)
 export const addReview = async (req, res) => {
   try {
-    const { 
+    const {
       type, // 'property' or 'vehicle'
       itemId, // propertyId or vehicleId
-      rating, 
-      comment, 
+      rating,
+      comment,
       detailedRatings,
-      images 
+      images
     } = req.body;
 
     const userId = req.userId; // from auth middleware
 
     // Validate required fields
     if (!type || !itemId || !rating || !comment) {
-      return res.json({ 
-        success: false, 
-        message: 'Type, itemId, rating, and comment are required' 
+      return res.json({
+        success: false,
+        message: 'Type, itemId, rating, and comment are required'
       });
     }
 
     // Validate type
     if (type !== 'property' && type !== 'vehicle') {
-      return res.json({ 
-        success: false, 
-        message: 'Type must be either "property" or "vehicle"' 
+      return res.json({
+        success: false,
+        message: 'Type must be either "property" or "vehicle"'
       });
     }
 
     // Validate rating
     if (rating < 1 || rating > 5) {
-      return res.json({ 
-        success: false, 
-        message: 'Rating must be between 1 and 5' 
+      return res.json({
+        success: false,
+        message: 'Rating must be between 1 and 5'
       });
     }
 
@@ -50,15 +50,15 @@ export const addReview = async (req, res) => {
       }
 
       // Check if user already reviewed this property
-      const existingReview = await PropertyReview.findOne({ 
-        propertyId: itemId, 
-        userId 
+      const existingReview = await PropertyReview.findOne({
+        propertyId: itemId,
+        userId
       });
 
       if (existingReview) {
-        return res.json({ 
-          success: false, 
-          message: 'You have already reviewed this property' 
+        return res.json({
+          success: false,
+          message: 'You have already reviewed this property'
         });
       }
 
@@ -75,10 +75,10 @@ export const addReview = async (req, res) => {
 
       await newReview.save();
 
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: 'Property review added successfully',
-        review: newReview 
+        review: newReview
       });
 
     } else {
@@ -89,15 +89,15 @@ export const addReview = async (req, res) => {
       }
 
       // Check if user already reviewed this vehicle
-      const existingReview = await VehicleReview.findOne({ 
-        vehicleId: itemId, 
-        userId 
+      const existingReview = await VehicleReview.findOne({
+        vehicleId: itemId,
+        userId
       });
 
       if (existingReview) {
-        return res.json({ 
-          success: false, 
-          message: 'You have already reviewed this vehicle' 
+        return res.json({
+          success: false,
+          message: 'You have already reviewed this vehicle'
         });
       }
 
@@ -114,10 +114,10 @@ export const addReview = async (req, res) => {
 
       await newReview.save();
 
-      return res.json({ 
-        success: true, 
+      return res.json({
+        success: true,
         message: 'Vehicle review added successfully',
-        review: newReview 
+        review: newReview
       });
     }
 
@@ -143,15 +143,15 @@ export const getPropertyReviews = async (req, res) => {
     }
 
     // Get all approved reviews for this property
-    const reviews = await PropertyReview.find({ 
-      propertyId, 
-      status: 'approved' 
+    const reviews = await PropertyReview.find({
+      propertyId,
+      status: 'approved'
     })
       .populate('userId', 'name avatar') // Populate user info
       .sort({ createdAt: -1 }); // Most recent first
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       reviews,
       count: reviews.length,
       averageRating: property.rating.avg
@@ -179,15 +179,15 @@ export const getVehicleReviews = async (req, res) => {
     }
 
     // Get all approved reviews for this vehicle
-    const reviews = await VehicleReview.find({ 
-      vehicleId, 
-      status: 'approved' 
+    const reviews = await VehicleReview.find({
+      vehicleId,
+      status: 'approved'
     })
       .populate('userId', 'name avatar') // Populate user info
       .sort({ createdAt: -1 }); // Most recent first
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       reviews,
       count: reviews.length,
       averageRating: vehicle.rating.avg
@@ -204,41 +204,36 @@ export const updateReview = async (req, res) => {
   try {
     const { reviewId } = req.params;
     const { rating, comment, detailedRatings, images } = req.body;
-    const userId = req.userId;
+    const userId = req.userId; // From authUser middleware
 
-    // Try to find in both collections
-    let review = await PropertyReview.findById(reviewId);
+    // SECURITY: Ownership check - only owner can update their review
+    let review = await PropertyReview.findOne({ _id: reviewId, userId: userId });
     let type = 'property';
 
     if (!review) {
-      review = await VehicleReview.findById(reviewId);
+      review = await VehicleReview.findOne({ _id: reviewId, userId: userId });
       type = 'vehicle';
     }
 
     if (!review) {
-      return res.json({ success: false, message: 'Review not found' });
-    }
-
-    // Check if user owns this review
-    if (review.userId.toString() !== userId) {
-      return res.json({ 
-        success: false, 
-        message: 'You are not authorized to update this review' 
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found' // Generic message prevents enumeration
       });
     }
 
     // Update fields
-    if (rating) review.rating = rating;
-    if (comment) review.comment = comment;
+    if (rating !== undefined) review.rating = rating;
+    if (comment !== undefined) review.comment = comment;
     if (detailedRatings) review.detailedRatings = detailedRatings;
     if (images) review.images = images;
 
     await review.save();
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       message: 'Review updated successfully',
-      review 
+      review
     });
 
   } catch (error) {
@@ -268,17 +263,17 @@ export const deleteReview = async (req, res) => {
 
     // Check if user owns this review
     if (review.userId.toString() !== userId) {
-      return res.json({ 
-        success: false, 
-        message: 'You are not authorized to delete this review' 
+      return res.json({
+        success: false,
+        message: 'You are not authorized to delete this review'
       });
     }
 
     await Model.findByIdAndDelete(reviewId);
 
-    return res.json({ 
-      success: true, 
-      message: 'Review deleted successfully' 
+    return res.json({
+      success: true,
+      message: 'Review deleted successfully'
     });
 
   } catch (error) {
@@ -300,8 +295,8 @@ export const getUserReviews = async (req, res) => {
       .populate('vehicleId', 'make model photos')
       .sort({ createdAt: -1 });
 
-    return res.json({ 
-      success: true, 
+    return res.json({
+      success: true,
       propertyReviews,
       vehicleReviews,
       totalReviews: propertyReviews.length + vehicleReviews.length

@@ -8,10 +8,19 @@ const BookingSchema = new Schema(
         vehicleId: { type: Schema.Types.ObjectId, ref: 'Vehicle' },
         startDate: { type: Date, required: true },
         endDate: { type: Date, required: true },
-        totalPrice: { type: Number, required: true },
+
+        // Pricing with coupon support
+        originalPrice: { type: Number }, // Price before discount
+        totalPrice: { type: Number, required: true }, // Final price after discount
+
+        // Coupon tracking
+        couponId: { type: Schema.Types.ObjectId, ref: 'Coupon' },
+        couponCode: { type: String, uppercase: true },
+        discountAmount: { type: Number, default: 0, min: 0 },
+
         status: {
             type: String,
-            enum: [ 'confirmed', 'cancelled', 'completed'],
+            enum: ['confirmed', 'cancelled', 'completed'],
             default: 'pending'
         },
         paymentStatus: {

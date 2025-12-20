@@ -10,6 +10,8 @@ import {
   updateDisputeStatus
 } from '../controller/disputeController.js';
 import authUser from '../middleware/authUser.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
+import { disputeLimiter } from '../middleware/advancedRateLimiter.js';
 
 const router = express.Router();
 
@@ -41,7 +43,7 @@ router.use(authUser);
  *   "evidence": ["https://example.com/photo1.jpg"]
  * }
  */
-router.post('/', createDispute);
+router.post('/', disputeLimiter, createDispute);
 
 /**
  * GET /api/disputes
@@ -89,7 +91,7 @@ router.get('/all', getAllDisputes);
  * 
  * Example: /api/disputes/507f1f77bcf86cd799439011
  */
-router.get('/:id', getDisputeById);
+router.get('/:id', validateObjectId('id'), getDisputeById);
 
 /**
  * PUT /api/disputes/:id
@@ -112,7 +114,7 @@ router.get('/:id', getDisputeById);
  *   "priority": "urgent"
  * }
  */
-router.put('/:id', updateDispute);
+router.put('/:id', disputeLimiter, validateObjectId('id'), updateDispute);
 
 /**
  * DELETE /api/disputes/:id
@@ -123,7 +125,7 @@ router.put('/:id', updateDispute);
  * 
  * Example: DELETE /api/disputes/507f1f77bcf86cd799439011
  */
-router.delete('/:id', deleteDispute);
+router.delete('/:id', validateObjectId('id'), deleteDispute);
 
 /**
  * PATCH /api/disputes/:id/status
@@ -143,6 +145,6 @@ router.delete('/:id', deleteDispute);
  *   "notes": "Assigned to support team"
  * }
  */
-router.patch('/:id/status', updateDisputeStatus);
+router.patch('/:id/status', validateObjectId('id'), updateDisputeStatus);
 
 export default router;

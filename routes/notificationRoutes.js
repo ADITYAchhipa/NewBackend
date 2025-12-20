@@ -8,6 +8,7 @@ import {
   clearAllNotifications,
   createNotification
 } from '../controller/notificationController.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const router = express.Router();
 
@@ -22,13 +23,13 @@ router.get('/', getUserNotifications);
 router.get('/unread-count', getUnreadCount);
 
 // PUT /api/notifications/:id/read - Mark single notification as read
-router.put('/:id/read', markAsRead);
+router.put('/:id/read', validateObjectId('id'), markAsRead);
 
 // PUT /api/notifications/mark-all-read - Mark all notifications as read
 router.put('/mark-all-read', markAllAsRead);
 
 // DELETE /api/notifications/:id - Delete a notification
-router.delete('/:id', deleteNotification);
+router.delete('/:id', validateObjectId('id'), deleteNotification);
 
 // DELETE /api/notifications - Clear all notifications
 router.delete('/', clearAllNotifications);

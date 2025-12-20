@@ -5,6 +5,8 @@ import {
     clearVisitedProperties
 } from '../controller/visitedPropertiesController.js';
 import authUser from '../middleware/authUser.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
+import { writeLimiter, writeBurstLimiter } from '../middleware/advancedRateLimiter.js';
 
 const router = express.Router();
 
@@ -19,7 +21,7 @@ const router = express.Router();
  * @param {string} propertyId - Property ID to add
  * @returns {object} Success message and visited count
  */
-router.post('/:propertyId', authUser, addToVisited);
+router.post('/:propertyId', authUser, writeBurstLimiter, writeLimiter, validateObjectId('propertyId'), addToVisited);
 
 /**
  * GET /api/user/visited

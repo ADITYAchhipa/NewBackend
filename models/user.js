@@ -125,4 +125,24 @@ const UserSchema = new Schema({
 
 }, { timestamps: true });
 
+// ============================================================================
+// SECURITY: Global Data Protection (Defense in Depth)
+// ============================================================================
+// Prevents sensitive field leakage even if .select() is forgotten
+// Works with res.json(), .lean() queries, and logging
+
+function removeSensitive(doc, ret) {
+  delete ret.password;
+  delete ret.loginAttempts;
+  delete ret.lockUntil;
+  delete ret.tokenVersion;
+  delete ret.lastPasswordResetToken;
+  delete ret.resetPasswordExpires;
+  delete ret.__v;
+  return ret;
+}
+
+UserSchema.set('toJSON', { transform: removeSensitive });
+UserSchema.set('toObject', { transform: removeSensitive });
+
 export default model('User', UserSchema);

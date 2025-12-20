@@ -1,12 +1,14 @@
-import express from 'express';
+import { Router } from 'express';
+import optionalAuth from '../middleware/optionalAuth.js';
 import {
     getRecommendedProperties,
     getRecommendedVehicles,
     clearRecommendationCache
 } from '../controller/recommendedController.js';
+import { csrfProtect } from '../middleware/csrfProtection.js';
+import { recommendationLimiter, recommendationBurstLimiter } from '../middleware/advancedRateLimiter.js';
 import authUser from '../middleware/authUser.js';
-
-const router = express.Router();
+const router = Router();
 
 /**
  * GET /api/recommended/properties?category=all
@@ -15,7 +17,7 @@ const router = express.Router();
  * @query {string} category - Category filter ('all', 'Apartments', 'Houses', etc.)
  * @returns {array} Recommended properties (max 20 for 'all', max 10 for specific category)
  */
-router.get('/properties', authUser, getRecommendedProperties);
+router.get('/properties', optionalAuth, recommendationBurstLimiter, recommendationLimiter, getRecommendedProperties);
 
 /**
  * GET /api/recommended/vehicles?category=all
@@ -24,7 +26,7 @@ router.get('/properties', authUser, getRecommendedProperties);
  * @query {string} category - Category filter ('all', 'Sedans', 'SUVs', etc.)
  * @returns {array} Recommended vehicles (max 20 for 'all', max 10 for specific category)
  */
-router.get('/vehicles', authUser, getRecommendedVehicles);
+router.get('/vehicles', optionalAuth, recommendationBurstLimiter, recommendationLimiter, getRecommendedVehicles);
 
 /**
  * DELETE /api/recommended/cache

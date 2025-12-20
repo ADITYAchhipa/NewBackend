@@ -1,4 +1,5 @@
 import Dispute from '../models/dispute.js';
+import { sanitizeQueryParam } from '../utils/security.js';
 
 // Create a new dispute
 export const createDispute = async (req, res) => {
@@ -67,9 +68,13 @@ export const getUserDisputes = async (req, res) => {
     const { status, category, page = 1, limit = 10 } = req.query;
 
     const query = { userId, isActive: true };
-    
-    if (status) query.status = status;
-    if (category) query.category = category;
+
+    // SECURITY: Sanitize query parameters to prevent NoSQL injection
+    const sanitizedStatus = sanitizeQueryParam(status);
+    const sanitizedCategory = sanitizeQueryParam(category);
+
+    if (sanitizedStatus) query.status = sanitizedStatus;
+    if (sanitizedCategory) query.category = sanitizedCategory;
 
     const disputes = await Dispute.find(query)
       .populate('userId', 'name email phone avatar')
@@ -137,30 +142,27 @@ export const getDisputeById = async (req, res) => {
 // Update a dispute (user can update before it's under review)
 export const updateDispute = async (req, res) => {
   try {
-    const { id } = req.params;
-    const userId = req.userId;
+    const disputeId = req.params.id;
+    const userId = req.user?.id || req.userId;
     const { title, description, evidence, category, priority } = req.body;
 
-    const dispute = await Dispute.findOne({ 
-      _id: id, 
-      userId, 
-      isActive: true 
+    // SECURITY: Ownership check + status check - only owner can update pending disputes
+    const dispute = await Dispute.findOne({
+      _id: disputeId,
+      userId: userId,  // Ownership check
+      status: 'pending',  // Only editable when pending
+      isActive: true
     });
 
     if (!dispute) {
       return res.status(404).json({
         success: false,
-        message: 'Dispute not found'
+        message: 'Dispute not found or cannot be modified'  // Generic message
       });
     }
 
-    // Only allow updates if status is pending
-    if (dispute.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot update dispute that is already under review or resolved'
-      });
-    }
+    // Ownership already verified by query, and status is 'pending'
+    // No need for the explicit `if (dispute.status !== 'pending')` check here anymore.
 
     // Update fields
     if (title) dispute.title = title;
@@ -189,12 +191,12 @@ export const updateDispute = async (req, res) => {
 export const deleteDispute = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.userId;
+    const userId = req.user?.id || req.userId; // Changed to use req.user?.id || req.userId
 
-    const dispute = await Dispute.findOne({ 
-      _id: id, 
-      userId, 
-      isActive: true 
+    const dispute = await Dispute.findOne({
+      _id: id,
+      userId, // Ownership check
+      isActive: true
     });
 
     if (!dispute) {
@@ -266,10 +268,15 @@ export const getAllDisputes = async (req, res) => {
     const { status, category, priority, page = 1, limit = 20 } = req.query;
 
     const query = { isActive: true };
-    
-    if (status) query.status = status;
-    if (category) query.category = category;
-    if (priority) query.priority = priority;
+
+    // SECURITY: Sanitize query parameters to prevent NoSQL injection
+    const sanitizedStatus = sanitizeQueryParam(status);
+    const sanitizedCategory = sanitizeQueryParam(category);
+    const sanitizedPriority = sanitizeQueryParam(priority);
+
+    if (sanitizedStatus) query.status = sanitizedStatus;
+    if (sanitizedCategory) query.category = sanitizedCategory;
+    if (sanitizedPriority) query.priority = sanitizedPriority;
 
     const disputes = await Dispute.find(query)
       .populate('userId', 'name email phone avatar')

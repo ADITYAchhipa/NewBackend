@@ -1,5 +1,6 @@
 import User from '../models/user.js';
 import logger from '../utils/logger.js';
+import { TOKEN_VERSION_FIELD } from '../utils/projections.js';
 
 /**
  * Logout from all devices
@@ -20,7 +21,7 @@ export const logoutAll = async (req, res) => {
         }
 
         // Find user and increment token version
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select(TOKEN_VERSION_FIELD);
 
         if (!user) {
             return res.status(404).json({

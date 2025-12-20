@@ -21,7 +21,7 @@ const PropertySchema = new Schema(
       type: String,
       enum: [
         // Residential
-        'apartment', 'house', 'villa', 'studio', 'townhouse', 'condo', 'room', 'pg', 'hostel', 'duplex', 'penthouse', 'bungalow',
+        'apartment', 'house', 'villa', 'studio', 'townhouse', 'condo', 'room', 'pg', 'hostel', 'duplex', 'penthouse', 'bungalow', 'guest_house',
         // Commercial  
         'office', 'shop', 'warehouse', 'coworking', 'showroom', 'clinic', 'restaurant', 'cafe',
         // Venue

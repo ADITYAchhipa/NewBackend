@@ -3,6 +3,9 @@ import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
 import Booking from '../models/booking.js';
 
+// Fields to select from User for recommendations
+const RECOMMENDED_USER_FIELDS = 'name favourites visitedProperties visitedVehicles bookings';
+
 // Simple in-memory cache with TTL
 const recommendationCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -55,13 +58,13 @@ export const getRecommendedProperties = async (req, res) => {
         // Try to find user - only populate fields that exist
         let user = null;
         try {
-            user = await User.findById(userId)
+            user = await User.findById(userId).select(RECOMMENDED_USER_FIELDS)
                 .populate('favourites.properties')
                 .populate('visitedProperties.propertyId');
         } catch (populateError) {
             console.warn('⚠️ [Recommended] Error populating user data:', populateError.message);
             // Try with minimal population
-            user = await User.findById(userId);
+            user = await User.findById(userId).select(RECOMMENDED_USER_FIELDS);
         }
 
         // Track used IDs to prevent duplicates
@@ -167,69 +170,80 @@ export const getRecommendedVehicles = async (req, res) => {
         const userId = req.userId;
         const category = req.query.category || 'all';
 
-        // Check cache first
-        const cacheKey = getCacheKey(userId, category, 'vehicles');
-        const cached = getFromCache(cacheKey);
-        if (cached) {
-            return res.json({
-                success: true,
-                results: cached,
-                total: cached.length,
-                cached: true,
-                message: 'Recommended vehicles fetched from cache'
-            });
-        }
+        console.log(`🎯 [Recommended] Fetching vehicle recommendations for user: ${userId || 'anonymous'}, category: ${category}`);
 
-        const user = await User.findById(userId)
-            .populate('favourites.vehicles')
-            .populate('visitedVehicles.vehicleId')
-            .populate('bookings.booked')
-            .populate('bookings.cancelled');
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        const usedIds = new Set();
-        let recommendations = [];
-
-        // Step 1: Favorites (featured first)
-        const favorites = await getFavoritesSorted(user.favourites.vehicles || [], usedIds, 'Vehicle');
-        recommendations.push(...favorites);
-
-        // Step 2: Bookings (if < 20)
-        if (recommendations.length < 20) {
-            const bookings = await getBookingsSorted(
-                user.bookings.booked || [],
-                user.bookings.cancelled || [],
-                usedIds,
-                'Vehicle'
-            );
-            recommendations.push(...bookings);
-        }
-
-        // Step 3: Visited (if < 20)
-        if (recommendations.length < 20) {
-            try {
-                const visitedVehs = user.visitedVehicles || [];
-                if (visitedVehs.length > 0) {
-                    const visited = getVisitedVehiclesSorted(visitedVehs, usedIds);
-                    recommendations.push(...visited);
-                    console.log(`👀 [Recommended] Added ${visited.length} visited vehicles`);
-                }
-            } catch (visitError) {
-                console.warn('⚠️ [Recommended] Error processing visited vehicles:', visitError.message);
+        // Check cache first (only if authenticated)
+        if (userId) {
+            const cacheKey = getCacheKey(userId, category, 'vehicles');
+            const cached = getFromCache(cacheKey);
+            if (cached) {
+                console.log(`📦 [Recommended] Cache hit for ${cacheKey}`);
+                return res.json({
+                    success: true,
+                    results: cached,
+                    total: cached.length,
+                    cached: true,
+                    message: 'Recommended vehicles fetched from cache'
+                });
             }
         }
 
-        // Step 4: Random fill (if < 20)
+        // Track used IDs to prevent duplicates
+        const usedIds = new Set();
+        let recommendations = [];
+
+        // Try to get personalized recommendations if user is authenticated
+        if (userId) {
+            try {
+                const user = await User.findById(userId).select(RECOMMENDED_USER_FIELDS)
+                    .populate('favourites.vehicles')
+                    .populate('visitedVehicles.vehicleId')
+                    .populate('bookings.booked')
+                    .populate('bookings.cancelled');
+
+                if (user) {
+                    console.log(`👤 [Recommended] User found: ${user.name || 'No name'}`);
+
+                    // Step 1: Favorites (featured first)
+                    const favorites = await getFavoritesSorted(user.favourites?.vehicles || [], usedIds, 'Vehicle');
+                    recommendations.push(...favorites);
+                    console.log(`⭐ [Recommended] Added ${favorites.length} favorites`);
+
+                    // Step 2: Bookings (if < 20)
+                    if (recommendations.length < 20) {
+                        const bookings = await getBookingsSorted(
+                            user.bookings?.booked || [],
+                            user.bookings?.cancelled || [],
+                            usedIds,
+                            'Vehicle'
+                        );
+                        recommendations.push(...bookings);
+                    }
+
+                    // Step 3: Visited (if < 20)
+                    if (recommendations.length < 20) {
+                        const visitedVehs = user.visitedVehicles || [];
+                        if (visitedVehs.length > 0) {
+                            const visited = getVisitedVehiclesSorted(visitedVehs, usedIds);
+                            recommendations.push(...visited);
+                            console.log(`👀 [Recommended] Added ${visited.length} visited vehicles`);
+                        }
+                    }
+                }
+            } catch (userError) {
+                console.warn('⚠️ [Recommended] Error fetching user data:', userError.message);
+            }
+        } else {
+            console.log(`👤 [Recommended] Anonymous user, will return random vehicles`);
+        }
+
+        // Step 4: Random fill (if < 20) - this is the main source for anonymous/new users
         if (recommendations.length < 20) {
             const needed = 20 - recommendations.length;
+            console.log(`🎲 [Recommended] Fetching ${needed} random vehicles to fill recommendations`);
             const random = await getRandomVehicles(usedIds, needed, category);
             recommendations.push(...random);
+            console.log(`🎲 [Recommended] Added ${random.length} random vehicles`);
         }
 
         // Apply category filter
@@ -240,7 +254,13 @@ export const getRecommendedVehicles = async (req, res) => {
             recommendations = recommendations.slice(0, 20);
         }
 
-        setCache(cacheKey, recommendations);
+        // Cache the results (only if authenticated)
+        if (userId) {
+            const cacheKey = getCacheKey(userId, category, 'vehicles');
+            setCache(cacheKey, recommendations);
+        }
+
+        console.log(`✅ [Recommended] Returning ${recommendations.length} vehicle recommendations`);
 
         res.json({
             success: true,
@@ -251,11 +271,29 @@ export const getRecommendedVehicles = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error in getRecommendedVehicles:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Failed to fetch recommended vehicles'
-        });
+        console.error('❌ [Recommended] Error in getRecommendedVehicles:', error);
+
+        // Fallback: Return random vehicles even on error
+        try {
+            console.log('🔄 [Recommended] Attempting fallback to random vehicles...');
+            const category = req.query.category || 'all';
+            const random = await getRandomVehicles(new Set(), 20, category);
+
+            return res.json({
+                success: true,
+                results: random,
+                total: random.length,
+                cached: false,
+                fallback: true,
+                message: 'Recommended vehicles (fallback to random)'
+            });
+        } catch (fallbackError) {
+            console.error('❌ [Recommended] Fallback also failed:', fallbackError);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to fetch recommended vehicles'
+            });
+        }
     }
 };
 

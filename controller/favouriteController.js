@@ -1,6 +1,7 @@
 import User from '../models/user.js';
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
+import { FAVOURITES_USER_FIELDS } from '../utils/projections.js';
 
 /**
  * Add property to user's favourites
@@ -221,7 +222,7 @@ export const getUserFavourites = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId)
+    const user = await User.findById(userId).select(FAVOURITES_USER_FIELDS)
       .populate({
         path: 'favourites.properties',
         select: '-__v',
@@ -277,7 +278,7 @@ export const getUserFavouriteProperties = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId)
+    const user = await User.findById(userId).select(FAVOURITES_USER_FIELDS)
       .populate({
         path: 'favourites.properties',
         select: '-__v',
@@ -324,7 +325,7 @@ export const getUserFavouriteVehicles = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId)
+    const user = await User.findById(userId).select(FAVOURITES_USER_FIELDS)
       .populate({
         path: 'favourites.vehicles',
         select: '-__v',
@@ -589,7 +590,7 @@ export const getFavouritesWithSort = async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId)
+    const user = await User.findById(userId).select(FAVOURITES_USER_FIELDS)
       .populate({
         path: 'favourites.properties',
         select: '-__v',

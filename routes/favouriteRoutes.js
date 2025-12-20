@@ -13,6 +13,8 @@ import {
   getFavouritesWithSort
 } from '../controller/favouriteController.js';
 import authUser from '../middleware/authUser.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
+import { writeLimiter, writeBurstLimiter } from '../middleware/advancedRateLimiter.js';
 
 const router = express.Router();
 
@@ -57,38 +59,37 @@ router.get('/vehicles', getUserFavouriteVehicles);
  * Toggle property favourite status (add if not favourited, remove if favourited)
  * Returns: { isFavourite: boolean, propertyId: string }
  */
-router.post('/toggle/property/:id', togglePropertyFavourite);
+router.post('/toggle/property/:id', writeBurstLimiter, writeLimiter, validateObjectId('id'), togglePropertyFavourite);
 
 /**
  * POST /api/favourite/toggle/vehicle/:id
  * Toggle vehicle favourite status (add if not favourited, remove if favourited)
  * Returns: { isFavourite: boolean, vehicleId: string }
  */
-router.post('/toggle/vehicle/:id', toggleVehicleFavourite);
+router.post('/toggle/vehicle/:id', writeBurstLimiter, writeLimiter, validateObjectId('id'), toggleVehicleFavourite);
 
 /**
  * POST /api/favourite/property/:id
  * Add a property to user's favourites
  */
-router.post('/property/:id', addPropertyToFavourites);
+router.post('/property/:id', validateObjectId('id'), addPropertyToFavourites);
 
 /**
  * POST /api/favourite/vehicle/:id
  * Add a vehicle to user's favourites
  */
-router.post('/vehicle/:id', addVehicleToFavourites);
+router.post('/vehicle/:id', validateObjectId('id'), addVehicleToFavourites);
 
 /**
  * DELETE /api/favourite/property/:id
  * Remove a property from user's favourites
  */
-router.delete('/property/:id', removePropertyFromFavourites);
+router.delete('/property/:id', validateObjectId('id'), removePropertyFromFavourites);
 
 /**
  * DELETE /api/favourite/vehicle/:id
  * Remove a vehicle from user's favourites
  */
-router.delete('/vehicle/:id', removeVehicleFromFavourites);
+router.delete('/vehicle/:id', validateObjectId('id'), removeVehicleFromFavourites);
 
 export default router;
-

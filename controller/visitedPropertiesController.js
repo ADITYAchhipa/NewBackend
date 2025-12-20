@@ -1,5 +1,6 @@
 import User from '../models/user.js';
 import Property from '../models/property.js';
+import { VISITED_PROPERTIES_FIELDS } from '../utils/projections.js';
 
 /**
  * Add property to user's visited properties list
@@ -22,7 +23,7 @@ export const addToVisited = async (req, res) => {
             });
         }
 
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select(VISITED_PROPERTIES_FIELDS);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -79,6 +80,7 @@ export const getVisitedProperties = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
 
         const user = await User.findById(userId)
+            .select('visitedProperties')
             .populate({
                 path: 'visitedProperties.propertyId',
                 select: '-__v',
@@ -86,8 +88,7 @@ export const getVisitedProperties = async (req, res) => {
                     path: 'ownerId',
                     select: 'name avatar phone'
                 }
-            })
-            .select('visitedProperties');
+            });
 
         if (!user) {
             return res.status(404).json({
@@ -128,7 +129,7 @@ export const clearVisitedProperties = async (req, res) => {
     try {
         const userId = req.userId;
 
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select('visitedProperties');
         if (!user) {
             return res.status(404).json({
                 success: false,

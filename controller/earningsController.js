@@ -1,6 +1,7 @@
 // controller/earningsController.js
 // Earnings History Management - Daily, Monthly, Yearly tracking
 import User from '../models/user.js';
+import { EARNINGS_USER_FIELDS } from '../utils/projections.js';
 
 /**
  * Add earnings to owner's history
@@ -12,7 +13,9 @@ import User from '../models/user.js';
  */
 export const addEarnings = async (ownerId, amount, type = 'properties') => {
     try {
-        const user = await User.findById(ownerId);
+        // SECURITY: Atomic update prevents race conditions in financial operations
+        // Using $inc ensures concurrent bookings don't overwrite each other
+        const user = await User.findById(ownerId).select(EARNINGS_USER_FIELDS);
         if (!user) {
             console.error('[Earnings] User not found:', ownerId);
             return false;
@@ -20,140 +23,110 @@ export const addEarnings = async (ownerId, amount, type = 'properties') => {
 
         const now = new Date();
         const currentDay = now.getDate();
-        const currentMonth = now.getMonth() + 1; // 1-12
+        const currentMonth = now.getMonth() + 1;
         const currentYear = now.getFullYear();
 
-        // Initialize earningsHistory if not exists
-        if (!user.earningsHistory) {
-            user.earningsHistory = {
-                properties: {
-                    daily: { data: Array(30).fill(0), lastUpdated: {} },
-                    monthly: { data: Array(12).fill(0), lastUpdated: {} },
-                    yearly: []
-                },
-                vehicles: {
-                    daily: { data: Array(30).fill(0), lastUpdated: {} },
-                    monthly: { data: Array(12).fill(0), lastUpdated: {} },
-                    yearly: []
+        // --- Daily Earnings ---
+        const dailyData = user.earningsHistory[type].daily;
+        const dailyLastUpdated = dailyData.lastUpdated;
+
+        let dayIndex;
+        // Check if we need to rotate/shift the daily array (FIFO queue)
+        if (!dailyLastUpdated.day ||
+            dailyLastUpdated.day !== currentDay ||
+            dailyLastUpdated.month !== currentMonth ||
+            dailyLastUpdated.year !== currentYear) {
+
+            // Different day - shift array and insert new day at index 29
+            // ATOMIC: Use $pop and $push instead of manual array manipulation
+            await User.findByIdAndUpdate(ownerId, {
+                $pop: { [`earningsHistory.${type}.daily.data`]: -1 }, // Remove first (oldest)
+                $push: { [`earningsHistory.${type}.daily.data`]: amount }, // Add to end (newest)
+                $set: {
+                    [`earningsHistory.${type}.daily.lastUpdated.day`]: currentDay,
+                    [`earningsHistory.${type}.daily.lastUpdated.month`]: currentMonth,
+                    [`earningsHistory.${type}.daily.lastUpdated.year`]: currentYear
                 }
-            };
+            });
+        } else {
+            // Same day - ATOMIC increment at last index (29)
+            dayIndex = 29;
+            await User.findByIdAndUpdate(ownerId, {
+                $inc: {
+                    [`earningsHistory.${type}.daily.data.${dayIndex}`]: amount
+                }
+            });
         }
 
-        const history = user.earningsHistory[type];
-        if (!history) {
-            console.error('[Earnings] Invalid type:', type);
-            return false;
+        // --- Monthly Earnings ---
+        const monthlyData = user.earningsHistory[type].monthly;
+        const monthlyLastUpdated = monthlyData.lastUpdated;
+
+        let monthIndex;
+        if (!monthlyLastUpdated.month ||
+            monthlyLastUpdated.month !== currentMonth ||
+            monthlyLastUpdated.year !== currentYear) {
+
+            // Different month - shift array
+            await User.findByIdAndUpdate(ownerId, {
+                $pop: { [`earningsHistory.${type}.monthly.data`]: -1 },
+                $push: { [`earningsHistory.${type}.monthly.data`]: amount },
+                $set: {
+                    [`earningsHistory.${type}.monthly.lastUpdated.month`]: currentMonth,
+                    [`earningsHistory.${type}.monthly.lastUpdated.year`]: currentYear
+                }
+            });
+        } else {
+            // Same month - ATOMIC increment at last index (11)
+            monthIndex = 11;
+            await User.findByIdAndUpdate(ownerId, {
+                $inc: {
+                    [`earningsHistory.${type}.monthly.data.${monthIndex}`]: amount
+                }
+            });
         }
 
-        // --- Update Daily ---
-        updateDailyEarnings(history.daily, amount, currentDay, currentMonth, currentYear);
+        // --- Yearly Earnings ---
+        // ATOMIC: Use upsert to increment or create year entry
+        await User.findOneAndUpdate(
+            {
+                _id: ownerId,
+                [`earningsHistory.${type}.yearly.year`]: currentYear
+            },
+            {
+                $inc: { [`earningsHistory.${type}.yearly.$.earnings`]: amount }
+            },
+            { upsert: false }  // Don't create if doesn't exist
+        ).then(async (result) => {
+            if (!result) {
+                // Year doesn't exist - add it atomically
+                await User.findByIdAndUpdate(ownerId, {
+                    $push: {
+                        [`earningsHistory.${type}.yearly`]: {
+                            year: currentYear,
+                            earnings: amount
+                        }
+                    }
+                });
+            }
+        });
 
-        // --- Update Monthly ---
-        updateMonthlyEarnings(history.monthly, amount, currentMonth, currentYear);
+        // --- Update Total Counters (ATOMIC) ---
+        await User.findByIdAndUpdate(ownerId, {
+            $inc: {
+                'TotalEarnings': amount,
+                'AvailableBalance': amount
+            }
+        });
 
-        // --- Update Yearly ---
-        updateYearlyEarnings(history.yearly, amount, currentYear);
-
-        // Mark the path as modified for Mongoose
-        user.markModified('earningsHistory');
-        await user.save();
-
-        console.log(`[Earnings] Added ${amount} to ${type} for owner ${ownerId}`);
+        console.log(`✅ [Earnings] Added ${amount} to ${ownerId} (${type})`);
         return true;
+
     } catch (error) {
-        console.error('[Earnings] Error adding earnings:', error.message);
+        console.error('[Earnings] Error adding earnings:', error);
         return false;
     }
 };
-
-/**
- * Update daily earnings with FIFO queue logic
- */
-function updateDailyEarnings(daily, amount, currentDay, currentMonth, currentYear) {
-    const last = daily.lastUpdated || {};
-
-    // First time or same day - just add to last element
-    if (!last.year) {
-        // First time - initialize
-        daily.data = Array(30).fill(0);
-        daily.data[29] = amount;
-        daily.lastUpdated = { day: currentDay, month: currentMonth, year: currentYear };
-        return;
-    }
-
-    // Calculate days difference
-    const lastDate = new Date(last.year, last.month - 1, last.day);
-    const currentDate = new Date(currentYear, currentMonth - 1, currentDay);
-    const daysDiff = Math.floor((currentDate - lastDate) / (1000 * 60 * 60 * 24));
-
-    if (daysDiff === 0) {
-        // Same day - add to last element
-        daily.data[29] = (daily.data[29] || 0) + amount;
-    } else if (daysDiff > 0) {
-        // New day(s) - shift array and add zeros for gaps
-        const shifts = Math.min(daysDiff, 30); // Don't shift more than 30
-
-        for (let i = 0; i < shifts; i++) {
-            daily.data.shift();
-            daily.data.push(0);
-        }
-
-        // Add amount to last element (today)
-        daily.data[29] = (daily.data[29] || 0) + amount;
-        daily.lastUpdated = { day: currentDay, month: currentMonth, year: currentYear };
-    }
-    // If daysDiff < 0, something is wrong with dates - don't update
-}
-
-/**
- * Update monthly earnings with FIFO queue logic
- */
-function updateMonthlyEarnings(monthly, amount, currentMonth, currentYear) {
-    const last = monthly.lastUpdated || {};
-
-    // First time
-    if (!last.year) {
-        monthly.data = Array(12).fill(0);
-        monthly.data[11] = amount;
-        monthly.lastUpdated = { month: currentMonth, year: currentYear };
-        return;
-    }
-
-    // Calculate months difference
-    const monthsDiff = (currentYear - last.year) * 12 + (currentMonth - last.month);
-
-    if (monthsDiff === 0) {
-        // Same month - add to last element
-        monthly.data[11] = (monthly.data[11] || 0) + amount;
-    } else if (monthsDiff > 0) {
-        // New month(s) - shift array and add zeros for gaps
-        const shifts = Math.min(monthsDiff, 12);
-
-        for (let i = 0; i < shifts; i++) {
-            monthly.data.shift();
-            monthly.data.push(0);
-        }
-
-        // Add amount to last element (current month)
-        monthly.data[11] = (monthly.data[11] || 0) + amount;
-        monthly.lastUpdated = { month: currentMonth, year: currentYear };
-    }
-}
-
-/**
- * Update yearly earnings - dynamic array
- */
-function updateYearlyEarnings(yearly, amount, currentYear) {
-    const existingYear = yearly.find(y => y.year === currentYear);
-
-    if (existingYear) {
-        existingYear.earnings = (existingYear.earnings || 0) + amount;
-    } else {
-        yearly.push({ year: currentYear, earnings: amount });
-        // Sort by year ascending
-        yearly.sort((a, b) => a.year - b.year);
-    }
-}
 
 /**
  * Get earnings history for display

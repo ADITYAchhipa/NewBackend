@@ -21,7 +21,7 @@ const NotificationSchema = new Schema({
   type: {
     type: String,
     required: true,
-    enum: ['booking', 'payment', 'message', 'review', 'system', 'promotion', 'price_alert', 'reminder'],
+    enum: ['booking', 'payment', 'message', 'review', 'system', 'promotion', 'price_alert', 'reminder', 'coupon'],
     index: true
   },
 

@@ -1,5 +1,6 @@
 import User from '../models/user.js';
 import Vehicle from '../models/vehicle.js';
+import { VISITED_VEHICLES_FIELDS } from '../utils/projections.js';
 
 /**
  * Add vehicle to user's visited vehicles list
@@ -22,7 +23,7 @@ export const addToVisited = async (req, res) => {
             });
         }
 
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select(VISITED_VEHICLES_FIELDS);
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -79,6 +80,7 @@ export const getVisitedVehicles = async (req, res) => {
         const limit = parseInt(req.query.limit) || 20;
 
         const user = await User.findById(userId)
+            .select('visitedVehicles')
             .populate({
                 path: 'visitedVehicles.vehicleId',
                 select: '-__v',
@@ -86,8 +88,7 @@ export const getVisitedVehicles = async (req, res) => {
                     path: 'ownerId',
                     select: 'name avatar phone'
                 }
-            })
-            .select('visitedVehicles');
+            });
 
         if (!user) {
             return res.status(404).json({
@@ -128,7 +129,7 @@ export const clearVisitedVehicles = async (req, res) => {
     try {
         const userId = req.userId;
 
-        const user = await User.findById(userId);
+        const user = await User.findById(userId).select('visitedVehicles');
         if (!user) {
             return res.status(404).json({
                 success: false,

@@ -8,6 +8,7 @@ import {
     markMessageAsSeen,
     searchUsers
 } from '../controller/chatController.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const chatRouter = Router();
 
@@ -30,12 +31,12 @@ chatRouter.get('/contacts', authUser, getChatContacts);
 chatRouter.get('/search', authUser, searchUsers);
 
 // Get messages with a specific user
-chatRouter.get('/messages/:id', authUser, getMessages);
+chatRouter.get('/messages/:id', authUser, validateObjectId('id'), getMessages);
 
 // Send a message to a specific user (with rate limiting)
-chatRouter.post('/send/:id', authUser, messageRateLimiter, sendMessage);
+chatRouter.post('/send/:id', authUser, validateObjectId('id'), messageRateLimiter, sendMessage);
 
 // Mark a message as seen
-chatRouter.post('/seen/:id', authUser, markMessageAsSeen);
+chatRouter.post('/seen/:id', authUser, validateObjectId('id'), markMessageAsSeen);
 
 export default chatRouter;

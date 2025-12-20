@@ -138,7 +138,7 @@ export const getPaginatedSearchResults = async (req, res) => {
       try {
         // Get user's favorites and city
         const User = (await import('../models/user.js')).default;
-        const user = await User.findById(userId).lean();
+        const user = await User.findById(userId).select(SEARCH_USER_FIELDS).lean();
 
         if (user) {
           userCity = user.City;
@@ -257,15 +257,17 @@ export const getPaginatedSearchResults = async (req, res) => {
       const { _sortScore, _sortPrice, _sortRating, _sortDistance, ...cleanItem } = item;
 
       if (type === 'vehicle') {
+        // Vehicles use 'photos' field in the database, map it to 'images' for frontend
+        const vehicleImages = cleanItem.photos || cleanItem.images || [];
         return {
           id: cleanItem._id?.toString(),
           _id: cleanItem._id?.toString(),
-          title: cleanItem.name || cleanItem.title || 'Untitled Vehicle',
+          title: cleanItem.make && cleanItem.model ? `${cleanItem.make} ${cleanItem.model}` : (cleanItem.name || cleanItem.title || 'Untitled Vehicle'),
           price: _sortPrice,
           rating: _sortRating,
           reviewCount: cleanItem.rating?.count || 0,
-          imageUrl: cleanItem.images?.[0] || cleanItem.image || '',
-          images: cleanItem.images || [],
+          imageUrl: vehicleImages[0] || cleanItem.image || '',
+          images: vehicleImages,
           location: cleanItem.city ? `${cleanItem.city}, ${cleanItem.state || ''}`.trim() : (cleanItem.location || ''),
           city: cleanItem.city || '',
           state: cleanItem.state || '',

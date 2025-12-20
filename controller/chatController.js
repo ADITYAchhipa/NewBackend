@@ -68,7 +68,7 @@ export async function getChatContacts(req, res) {
 
         // Get contact details
         const contactIds = user.propertyOwners;
-        const contacts = await User.find({ _id: { $in: contactIds } })
+        const contacts = await User.find({ _id: { $in: contactIds } }).select(PUBLIC_USER_FIELDS)
             .select("_id name email avatar");
 
         // Build response with contacts and their message data

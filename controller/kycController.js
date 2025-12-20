@@ -296,8 +296,10 @@ export const getAllKyc = async (req, res) => {
         const { status, page = 1, limit = 20 } = req.query;
 
         const query = {};
-        if (status && ['pending', 'accepted', 'rejected'].includes(status)) {
-            query.status = status;
+        // SECURITY: Sanitize status parameter to prevent NoSQL injection
+        const sanitizedStatus = sanitizeQueryParam(status);
+        if (sanitizedStatus && ['pending', 'accepted', 'rejected'].includes(sanitizedStatus)) {
+            query.status = sanitizedStatus;
         }
 
         const skip = (parseInt(page) - 1) * parseInt(limit);

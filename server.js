@@ -30,6 +30,8 @@ import filterRouter from './routes/filterRoutes.js';
 import chatRouter from './routes/chatRoutes.js';
 import analyticsRouter from './routes/analyticsRoutes.js';
 import feedbackRouter from './routes/feedbackRoutes.js';
+import couponRouter from './routes/couponRoutes.js';
+import { blockPrototypePollution } from './middleware/prototypePollutionGuard.js';
 const app = express();
 const server = createServer(app);
 
@@ -87,10 +89,12 @@ app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for im
 // SECURITY: Explicit CORS configuration (no wildcards!)
 // Never use origin: true in production - prevents credential theft
 const allowedOrigins = [
-    'http://localhost:3000',  // Local development
+    'http://localhost:32845',  // Local development
     'http://localhost:5173',  // Vite dev server
     'http://localhost:4173',  // Vite preview
     'http://localhost:51920',  // Vite preview
+    'http://localhost:50703',  // Vite preview
+    'http://localhost:52081',  // Vite preview
     // Add your production frontend URLs here:
     // 'https://yourfrontend.com',
     // 'https://app.yourdomain.com'
@@ -100,6 +104,11 @@ app.use(cors({
     origin: function (origin, callback) {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
+
+        // In development, allow all localhost origins (any port)
+        if (origin.startsWith('http://localhost:')) {
+            return callback(null, true);
+        }
 
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
@@ -113,9 +122,21 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
 }));
 
+// SECURITY: HTTP Parameter Pollution (HPP) Guard
+// Prevents attacks like: ?id=valid&id=malicious
+// Must be applied BEFORE other middleware parses parameters
+import hppGuard from './middleware/hppGuard.js';
+app.use(hppGuard);
+
 // Security middleware
 // Note: express-mongo-sanitize removed due to Express 5 compatibility issues
-// NoSQL injection protection is handled by inputValidator.js middleware on routes
+// NoSQL injection protection is handled by// ============================================================================
+// PHASE 3: REQUEST SHAPE HARDENING
+// ============================================================================
+// Prototype Pollution Guard - Blocks __proto__, constructor, prototype, $ operators
+app.use(blockPrototypePollution);
+
+// Security Headers (Applied first for all requests)
 app.use(helmet({
     // Allow cross-origin resources (needed for Cloudinary images)
     crossOriginResourcePolicy: { policy: 'cross-origin' },
@@ -199,6 +220,7 @@ app.use('/api/filter', filterRouter); // Search filter routes
 app.use('/api/chat', chatRouter); // Chat routes
 app.use('/api/analytics', analyticsRouter); // Owner analytics dashboard routes
 app.use('/api/feedback', feedbackRouter); // User feedback via email
+app.use('/api/coupons', couponRouter); // Coupon claim and apply routes
 
 
 server.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));

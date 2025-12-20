@@ -5,6 +5,7 @@ import {
     clearVisitedVehicles
 } from '../controller/visitedVehiclesController.js';
 import authUser from '../middleware/authUser.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const router = express.Router();
 
@@ -19,7 +20,7 @@ const router = express.Router();
  * @param {string} vehicleId - Vehicle ID to add
  * @returns {object} Success message and visited count
  */
-router.post('/:vehicleId', authUser, addToVisited);
+router.post('/:vehicleId', authUser, validateObjectId('vehicleId'), addToVisited);
 
 /**
  * GET /api/user/visited-vehicles
