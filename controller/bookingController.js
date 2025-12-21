@@ -417,72 +417,79 @@ export const cancelBooking = async (req, res) => {
  * POST /api/owner/bookings/:id/approve
  */
 export const approveBooking = async (req, res) => {
-    const session = await mongoose.startSession();
-
     try {
-        await session.withTransaction(async () => {
-            const { id } = req.params;
-            const ownerId = req.userId; // From auth middleware
+        const { id } = req.params;
+        const ownerId = req.userId; // From auth middleware
 
-            const booking = await Booking.findById(id).session(session);
+        const booking = await Booking.findById(id);
 
-            if (!booking) {
-                throw new Error('Booking not found');
-            }
+        if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+        }
 
-            // Verify booking belongs to this owner
-            if (booking.ownerId.toString() !== ownerId.toString()) {
-                throw new Error('Not authorized to approve this booking');
-            }
+        // Verify booking belongs to this owner
+        if (booking.ownerId.toString() !== ownerId.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to approve this booking' });
+        }
 
-            if (booking.status !== 'pending') {
-                throw new Error(`Cannot approve booking with status: ${booking.status}`);
-            }
+        if (booking.status !== 'pending') {
+            return res.status(400).json({ success: false, message: `Cannot approve booking with status: ${booking.status}` });
+        }
 
-            // Validate and normalize dates
-            const bookingStart = validateDateFormat(normalizeDate(booking.startDate), 'Start date');
-            const bookingEnd = validateDateFormat(normalizeDate(booking.endDate), 'End date');
+        // Validate and normalize dates
+        let bookingStart, bookingEnd;
+        try {
+            bookingStart = normalizeDate(booking.startDate);
+            bookingEnd = normalizeDate(booking.endDate);
+        } catch (dateError) {
+            console.error('[APPROVE] Date error:', dateError.message, { start: booking.startDate, end: booking.endDate });
+            return res.status(400).json({ success: false, message: `Invalid booking dates: ${dateError.message}` });
+        }
 
-            const listingType = booking.propertyId ? 'property' : 'vehicle';
-            const listingId = booking.propertyId || booking.vehicleId;
+        const listingType = booking.propertyId ? 'property' : 'vehicle';
+        const listingId = booking.propertyId || booking.vehicleId;
 
-            // CRITICAL: Check for date conflicts (optimized with select)
-            const conflict = await BlockedRange.findOne({
-                listingId,
-                listingType,
-                start: { $lte: bookingEnd },
-                end: { $gte: bookingStart }
-            })
-                .select('_id bookingId')
-                .session(session);
+        // Check for date conflicts
+        const conflict = await BlockedRange.findOne({
+            listingId,
+            listingType,
+            start: { $lte: bookingEnd },
+            end: { $gte: bookingStart }
+        }).select('_id bookingId');
 
-            if (conflict) {
-                const conflictBooking = await Booking.findById(conflict.bookingId).select('id');
-                throw new Error(`Dates unavailable - conflicts with booking ${conflictBooking?.id || 'unknown'}`);
-            }
+        if (conflict) {
+            const conflictBooking = await Booking.findById(conflict.bookingId).select('id');
+            return res.status(400).json({
+                success: false,
+                message: `Dates unavailable - conflicts with booking ${conflictBooking?.id || 'unknown'}`
+            });
+        }
 
-            // Add blockedRange atomically
-            await BlockedRange.create([{
-                listingId,
-                listingType,
-                start: bookingStart,
-                end: bookingEnd,
-                bookingId: booking._id
-            }], { session });
-
-            // Update booking status
-            booking.status = 'confirmed';
-            await booking.save({ session });
-
-            console.log(`âœ… [APPROVED] Booking ${booking._id}: ${bookingStart} â†’ ${bookingEnd}`);
+        // Add blocked range
+        await BlockedRange.create({
+            listingId,
+            listingType,
+            start: bookingStart,
+            end: bookingEnd,
+            bookingId: booking._id
         });
+
+        // Update booking status
+        booking.status = 'confirmed';
+        await booking.save();
+
+        // CRITICAL: Add booking amount to owner's PendingBalance
+        const bookingAmount = booking.totalPrice;
+        await User.findByIdAndUpdate(booking.ownerId, {
+            $inc: { PendingBalance: bookingAmount }
+        });
+
+        console.log(`✅ [APPROVED] Booking ${booking._id}: ${bookingStart} → ${bookingEnd}, ₹${bookingAmount} to PendingBalance`);
 
         res.status(200).json({ success: true, message: 'Booking approved and dates blocked' });
     } catch (error) {
-        console.error('âŒ [APPROVE ERROR]', error.message);
+        console.error('❌ [APPROVE ERROR]', error.message);
         res.status(400).json({ success: false, message: error.message });
-    } finally {
-        session.endSession();
     }
 };
 

@@ -32,6 +32,7 @@ import analyticsRouter from './routes/analyticsRoutes.js';
 import feedbackRouter from './routes/feedbackRoutes.js';
 import couponRouter from './routes/couponRoutes.js';
 import uploadRouter from './routes/uploadRoutes.js';
+import walletRouter from './routes/walletRoutes.js';
 import { blockPrototypePollution } from './middleware/prototypePollutionGuard.js';
 const app = express();
 const server = createServer(app);
@@ -226,6 +227,7 @@ app.use('/api/analytics', analyticsRouter); // Owner analytics dashboard routes
 app.use('/api/feedback', feedbackRouter); // User feedback via email
 app.use('/api/coupons', couponRouter); // Coupon claim and apply routes
 app.use('/api/upload', uploadRouter); // Image upload routes
+app.use('/api/wallet', walletRouter); // Wallet and withdrawal management routes
 
 
 server.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));

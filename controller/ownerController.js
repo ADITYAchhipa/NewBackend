@@ -2,6 +2,7 @@
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
 import Booking from '../models/booking.js';
+import User from '../models/user.js';
 
 /**
  * Get dashboard stats for the logged-in owner
@@ -84,13 +85,12 @@ export const getOwnerDashboardStats = async (req, res) => {
         // --- Total Listings ---
         const totalListings = properties.length + vehicles.length;
 
-        // --- Available Balance (earnings minus platform fees - mock 10% fee for now) ---
-        // In a real system, this would come from a payments/payout tracking system
-        const platformFeePercent = 0.10;
-        const availableBalance = Math.round(totalEarnings * (1 - platformFeePercent) * 100) / 100;
+        // Fetch actual balance from user profile
+        const user = await User.findById(userId).select('PendingBalance AvailableBalance').lean();
 
-        // --- Pending Payouts (mock - would come from payment system) ---
-        const pendingPayouts = availableBalance * 0.3; // 30% pending
+        // Use actual balances from user model
+        const pendingPayouts = user?.PendingBalance || 0;
+        const availableBalance = user?.AvailableBalance || 0;
 
         // --- Average Rating ---
         const allRatings = [
@@ -314,7 +314,6 @@ export const createPropertyListing = async (req, res) => {
         await property.save();
 
         // Increment user's property listing count
-        const User = (await import('../models/user.js')).default;
         await User.findByIdAndUpdate(userId, {
             $inc: {
                 TotalPropertyListings: 1,
@@ -392,7 +391,6 @@ export const createVehicleListing = async (req, res) => {
         await vehicle.save();
 
         // Increment user's vehicle listing count
-        const User = (await import('../models/user.js')).default;
         await User.findByIdAndUpdate(userId, {
             $inc: {
                 TotalVehicleListings: 1,
@@ -722,7 +720,6 @@ export const deleteListing = async (req, res) => {
         }
 
         // Update user's listing count
-        const User = (await import('../models/user.js')).default;
         const updateField = type === 'vehicle' ? 'TotalVehicleListings' : 'TotalPropertyListings';
         await User.findByIdAndUpdate(userId, {
             $inc: {
@@ -772,7 +769,6 @@ export const featureListingWithCoins = async (req, res) => {
         }
 
         // Check user's coin balance
-        const User = (await import('../models/user.js')).default;
         const user = await User.findById(userId);
 
         const availableCoins = user.totalTokens || 0;

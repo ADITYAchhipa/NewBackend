@@ -124,6 +124,60 @@ const UserSchema = new Schema({
     }
   },
 
+  // ============================================================================
+  // WALLET SYSTEM
+  // ============================================================================
+
+  // Payment Details - Sensitive data, requires KYC completion to access
+  paymentDetails: {
+    type: {
+      bankAccount: {
+        accountHolderName: { type: String },
+        accountNumber: { type: String },
+        ifscCode: { type: String },
+        bankName: { type: String },
+        verified: { type: Boolean, default: false }
+      },
+      upiId: { type: String },
+      preferredMethod: { type: String, enum: ['bank', 'upi'], default: 'upi' }
+    },
+    select: false  // Protected field - only accessible through wallet endpoints
+  },
+
+  // Wallet Transaction History
+  walletTransactions: [{
+    type: {
+      type: String,
+      enum: ['earning', 'withdrawal', 'refund', 'penalty', 'bonus', 'commission'],
+      required: true
+    },
+    amount: { type: Number, required: true },
+    status: {
+      type: String,
+      enum: ['completed', 'pending', 'failed'],
+      default: 'completed'
+    },
+    description: { type: String, required: true },
+    bookingId: { type: Schema.Types.ObjectId, ref: 'Booking' },
+    createdAt: { type: Date, default: Date.now }
+  }],
+
+  // Withdrawal Requests - User-initiated withdrawal requests
+  withdrawalRequests: [{
+    amount: { type: Number, required: true },
+    status: {
+      type: String,
+      enum: ['pending', 'approved', 'rejected', 'processed'],
+      default: 'pending'
+    },
+    paymentMethod: { type: String, enum: ['bank', 'upi'], required: true },
+    requestedAt: { type: Date, default: Date.now },
+    processedAt: { type: Date },
+    processedBy: { type: Schema.Types.ObjectId, ref: 'User' }, // Admin who processed
+    rejectionReason: { type: String },
+    transactionId: { type: String } // External payment gateway transaction ID
+  }],
+
 }, { timestamps: true });
 
 // ============================================================================
