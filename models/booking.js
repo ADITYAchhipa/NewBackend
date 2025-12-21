@@ -4,6 +4,7 @@ import { Schema, model } from 'mongoose';
 const BookingSchema = new Schema(
     {
         userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+        ownerId: { type: Schema.Types.ObjectId, ref: 'User', index: true }, // Property/vehicle owner
         propertyId: { type: Schema.Types.ObjectId, ref: 'Property' },
         vehicleId: { type: Schema.Types.ObjectId, ref: 'Vehicle' },
         startDate: { type: Date, required: true },
@@ -20,12 +21,12 @@ const BookingSchema = new Schema(
 
         status: {
             type: String,
-            enum: ['confirmed', 'cancelled', 'completed'],
+            enum: ['pending', 'inProgress', 'confirmed', 'cancelled', 'completed'],
             default: 'pending'
         },
         paymentStatus: {
             type: String,
-            enum: ['paid', 'refunded'],
+            enum: ['pending', 'paid', 'refunded'],
             default: 'pending'
         },
     },

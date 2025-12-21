@@ -101,6 +101,7 @@ const PropertySchema = new Schema(
     },
 
     gateClosingTime: { type: String },
+    lastDeactivatedAt: { type: Date }, // Track when listing was deactivated for cooldown enforcement
 
   },
   { timestamps: true }

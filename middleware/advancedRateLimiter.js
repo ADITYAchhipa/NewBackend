@@ -88,7 +88,7 @@ export const recommendationLimiter = createLimiter({
 // Burst protection
 export const recommendationBurstLimiter = createLimiter({
     windowMs: 1000,
-    max: 2, // Max 2 per second
+    max: 5, // Max 5 per second (increased from 2 to handle multiple widgets)
     message: 'Please wait before requesting more recommendations.'
 });
 

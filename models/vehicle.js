@@ -33,6 +33,7 @@ const VehicleSchema = new Schema(
     rating: { avg: { type: Number, default: 0 }, count: { type: Number, default: 0 } },
     status: { type: String, enum: ['active', 'inactive', 'suspended', 'deleted'], default: 'active' },
     available: { type: Boolean, default: true },
+    lastDeactivatedAt: { type: Date }, // Track when listing was deactivated for cooldown enforcement
   },
   { timestamps: true }
 );

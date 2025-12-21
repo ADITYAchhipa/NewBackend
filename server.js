@@ -31,6 +31,7 @@ import chatRouter from './routes/chatRoutes.js';
 import analyticsRouter from './routes/analyticsRoutes.js';
 import feedbackRouter from './routes/feedbackRoutes.js';
 import couponRouter from './routes/couponRoutes.js';
+import uploadRouter from './routes/uploadRoutes.js';
 import { blockPrototypePollution } from './middleware/prototypePollutionGuard.js';
 const app = express();
 const server = createServer(app);
@@ -147,7 +148,7 @@ app.use(helmet({
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'"],
-            imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+            imgSrc: ["'self'", "data:", "https://res.cloudinary.com", "http://localhost:*", "https://localhost:*"],
             connectSrc: ["'self'"],
             fontSrc: ["'self'", "data:"],
             objectSrc: ["'none'"],
@@ -195,6 +196,9 @@ await connectCloudinary();
 app.use(express.urlencoded({ extended: true })); // for form-data
 app.use(cookieParser());
 
+// Serve static files from uploads directory
+app.use('/uploads', express.static('uploads'));
+
 
 
 // Routes
@@ -221,6 +225,7 @@ app.use('/api/chat', chatRouter); // Chat routes
 app.use('/api/analytics', analyticsRouter); // Owner analytics dashboard routes
 app.use('/api/feedback', feedbackRouter); // User feedback via email
 app.use('/api/coupons', couponRouter); // Coupon claim and apply routes
+app.use('/api/upload', uploadRouter); // Image upload routes
 
 
 server.listen(port, () => console.log(`✅ Server running at http://localhost:${port}`));

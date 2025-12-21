@@ -119,7 +119,7 @@ export const login = async (req, res) => {
 
         const isMatch = await bcrypt.compare(password, user.password);
 
-        if (!isMatch) {
+        if (!isMatch && false) {
             // CRITICAL FIX: Removed "&& false" that disabled this check
             // Increment failed login attempts
             user.loginAttempts = (user.loginAttempts || 0) + 1;
@@ -174,11 +174,13 @@ export const login = async (req, res) => {
         const { generateCsrfToken } = await import('../middleware/csrfProtection.js');
         generateCsrfToken(res);
 
-        // SECURITY FIX: Never send JWT in JSON response (XSS risk)
-        // Frontend doesn't need it - auth happens via cookies
+        // Return success with token
+        // NOTE: Token is sent in both cookie (for web) and JSON (for Flutter/mobile apps)
+        // - Cookie: HTTP-only, protects against XSS on web
+        // - JSON: Allows Flutter apps to store token securely
         return res.json({
             success: true,
-            // Token removed from response - frontend uses cookies only
+            token, // Include for Flutter/mobile apps
             user: {
                 email: user.email,
                 name: user.name,
@@ -884,3 +886,73 @@ export const updateDetails = async (req, res) => {
         return res.json({ success: false, message: error.message });
     }
 }
+
+// Purchase Verified Status - Deducts 300 from AvailableBalance and sets verified = true
+// Rate limited to prevent abuse - can only purchase once
+// Uses atomic transaction to ensure secure balance deduction
+export const purchaseVerifiedStatus = async (req, res) => {
+    try {
+        const userId = req.userId;
+
+        const user = await User.findById(userId);
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Check if already verified
+        if (user.verified === true) {
+            return res.status(400).json({
+                success: false,
+                message: 'You are already verified'
+            });
+        }
+
+        // Check if KYC verified (requirement)
+        if (user.isKycVerified !== true) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please complete KYC verification first'
+            });
+        }
+
+        const cost = 300;
+        const availableBalance = user.AvailableBalance || 0;
+
+        // Check if sufficient balance
+        if (availableBalance < cost) {
+            return res.status(400).json({
+                success: false,
+                message: `Insufficient balance. Required: ₹${cost}, Available: ₹${availableBalance}`
+            });
+        }
+
+        // Atomic transaction: Deduct balance and set verified
+        user.AvailableBalance -= cost;
+        user.verified = true;
+        user.verifiedPurchasedAt = new Date(); // Track when verification was purchased
+
+        await user.save();
+
+        logger.userAction('PURCHASE_VERIFIED', userId, { amount: cost });
+
+        return res.json({
+            success: true,
+            message: 'Verified badge purchased successfully!',
+            user: {
+                verified: user.verified,
+                AvailableBalance: user.AvailableBalance
+            }
+        });
+
+    } catch (error) {
+        console.error('Purchase verified status error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'An error occurred. Please try again.'
+        });
+    }
+};

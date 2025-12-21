@@ -90,7 +90,7 @@ export const getPaginatedSearchResults = async (req, res) => {
       }
 
       if (keywords.length === 1) {
-        // Single keyword - search across all fields (OR)
+        // Single keyword - search across all fields including owner (OR)
         // SECURITY: Escape regex to prevent ReDoS
         const keyword = escapeRegex(keywords[0]);
         baseQuery.$or = [
@@ -124,6 +124,48 @@ export const getPaginatedSearchResults = async (req, res) => {
         });
       }
     }
+
+    // After building base query, if searching by text, we need to also search owners
+    // We'll do a second query to find matching owners, then add their listings
+    let ownerIds = [];
+    if (query && query.trim()) {
+      try {
+        const User = (await import('../models/user.js')).default;
+        const keyword = escapeRegex(query.trim());
+        console.log(`[SEARCH] Searching for owners matching: "${keyword}"`);
+
+        const matchingOwners = await User.find({
+          $or: [
+            { name: { $regex: keyword, $options: 'i' } },
+            { email: { $regex: keyword, $options: 'i' } }
+          ]
+        }).select('_id name email').lean();
+
+        console.log(`[SEARCH] Found ${matchingOwners.length} matching owners:`, matchingOwners.map(o => ({ id: o._id, name: o.name, email: o.email })));
+        ownerIds = matchingOwners.map(u => u._id);
+      } catch (err) {
+        console.log('Error searching owners:', err.message);
+      }
+    }
+
+    // Modify base query to include owner matches
+    if (ownerIds.length > 0) {
+      console.log(`[SEARCH] Adding ${ownerIds.length} owner IDs to search query`);
+      if (baseQuery.$or || baseQuery.$and) {
+        // Wrap existing query and add owner condition
+        const existingQuery = { ...baseQuery };
+        baseQuery = {
+          $or: [
+            existingQuery,
+            { ownerId: { $in: ownerIds } }
+          ]
+        };
+      } else {
+        baseQuery.ownerId = { $in: ownerIds };
+      }
+    }
+
+    console.log('[SEARCH] Final base query:', JSON.stringify(baseQuery, null, 2));
 
     // Get user data for relevance sorting (if authenticated)
     let userBookedIds = [];
@@ -291,6 +333,8 @@ export const getPaginatedSearchResults = async (req, res) => {
           reviewCount: cleanItem.rating?.count || 0,
           imageUrl: cleanItem.images?.[0] || cleanItem.image || '',
           images: cleanItem.images || [],
+          // DEBUG: Log image data
+          ...(console.log(`🖼️ [SEARCH] Property ${cleanItem.title}: imageUrl=${cleanItem.images?.[0] || cleanItem.image}, images=${JSON.stringify(cleanItem.images)}`), {}),
           location: cleanItem.city ? `${cleanItem.city}, ${cleanItem.state || ''}`.trim() : (cleanItem.location || ''),
           city: cleanItem.city || '',
           state: cleanItem.state || '',

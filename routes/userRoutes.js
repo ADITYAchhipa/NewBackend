@@ -14,10 +14,11 @@ import {
     updateProfileImage,
     updateDetails,
     requestOtp,
-    verifyAndRegister
+    verifyAndRegister,
+    purchaseVerifiedStatus
 } from '../controller/userController.js';
 import { logoutAll } from '../controller/logoutAllController.js';
-import { getUserBookings } from '../controller/bookingController.js';
+import { getUserBookings, createTestBooking, cancelBooking } from '../controller/bookingController.js';
 import authUser from '../middleware/authUser.js';
 import { upload } from '../config/multer.js';
 import { otpRateLimiter, loginRateLimiter } from '../middleware/rateLimiter.js';
@@ -87,5 +88,10 @@ userRouter.post('/logout-all', authUser, csrfProtect, logoutAll);
 
 // Bookings
 userRouter.get('/bookings', authUser, getUserBookings);
+userRouter.post('/bookings/test', authUser, createTestBooking); // Test mode booking (bypasses payment)
+userRouter.post('/bookings/cancel', authUser, cancelBooking); // Cancel booking (JWT auth sufficient)
+
+// Purchase verified status (CSRF protected - money transaction)
+userRouter.post('/purchase-verified', authUser, csrfProtect, purchaseVerifiedStatus);
 
 export default userRouter;

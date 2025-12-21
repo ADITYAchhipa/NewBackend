@@ -15,6 +15,7 @@ const UserSchema = new Schema({
   InactiveListings: { type: Number, default: 0 },
   TotalBookings: { type: Number, default: 0 },
   AvailableBalance: { type: Number, default: 0 },
+  PendingBalance: { type: Number, default: 0 }, // Pending earnings from bookings awaiting completion
 
   // Separate counts for properties and vehicles
   TotalPropertyListings: { type: Number, default: 0 },
