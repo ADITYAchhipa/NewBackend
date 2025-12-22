@@ -15,7 +15,9 @@ import {
     updateDetails,
     requestOtp,
     verifyAndRegister,
-    purchaseVerifiedStatus
+    purchaseVerifiedStatus,
+    getWalletData,
+    getReferralData
 } from '../controller/userController.js';
 import { logoutAll } from '../controller/logoutAllController.js';
 import { getUserBookings, createTestBooking, cancelBooking } from '../controller/bookingController.js';
@@ -90,6 +92,12 @@ userRouter.post('/logout-all', authUser, csrfProtect, logoutAll);
 userRouter.get('/bookings', authUser, getUserBookings);
 userRouter.post('/bookings/test', authUser, createTestBooking); // Test mode booking (bypasses payment)
 userRouter.post('/bookings/cancel', authUser, cancelBooking); // Cancel booking (JWT auth sufficient)
+
+// Wallet
+userRouter.get('/wallet', authUser, getWalletData);
+
+// Referral
+userRouter.get('/referral', authUser, getReferralData);
 
 // Purchase verified status (CSRF protected - money transaction)
 userRouter.post('/purchase-verified', authUser, csrfProtect, purchaseVerifiedStatus);

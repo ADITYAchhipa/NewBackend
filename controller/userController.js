@@ -51,6 +51,27 @@ export const register = async (req, res) => {
         const hashedPasword = await bcrypt.hash(password, 10)
 
         const user = await User.create({ name, email, password: hashedPasword, phone, ReferralCode: referralCode })
+
+        // REFERRAL TRACKING: Same logic as in new registration flow
+        if (referralCode) {
+            try {
+                const referrer = await User.findOne({ ReferralCode: referralCode });
+                if (referrer) {
+                    user.referredBy = referrer._id;
+                    await user.save();
+                    await User.findByIdAndUpdate(referrer._id, {
+                        $inc: { referralCount: 1 },
+                        $push: { referredUsers: user._id }
+                    });
+                    console.log(`✅ [REFERRAL] User ${user.email} referred by ${referrer.email}`);
+                } else {
+                    console.log(`⚠️ [REFERRAL] Invalid code: ${referralCode}`);
+                }
+            } catch (err) {
+                console.error('❌ [REFERRAL] Error:', err.message);
+            }
+        }
+
         logger.userAction('REGISTER', user._id, { email: user.email });
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 
@@ -383,6 +404,35 @@ export const verifyAndRegister = async (req, res) => {
             verify: true,
             ReferralCode: pendingReg.referralCode
         });
+
+        // REFERRAL TRACKING: Increment referrer's count if valid code was provided
+        if (pendingReg.referralCode) {
+            try {
+                // Find the user who owns this referral code
+                const referrer = await User.findOne({ ReferralCode: pendingReg.referralCode });
+
+                if (referrer) {
+                    // Valid referral code - link new user to referrer
+                    user.referredBy = referrer._id;
+                    await user.save();
+
+                    // Increment referrer's count and add to their referred users list
+                    await User.findByIdAndUpdate(referrer._id, {
+                        $inc: { referralCount: 1 },
+                        $push: { referredUsers: user._id }
+                    });
+
+                    console.log(`✅ [REFERRAL] User ${user.email} referred by ${referrer.email} (code: ${pendingReg.referralCode})`);
+                    console.log(`✅ [REFERRAL] ${referrer.email} now has ${referrer.referralCount + 1} referrals`);
+                } else {
+                    // Invalid referral code - just log and continue (user still registers successfully)
+                    console.log(`⚠️ [REFERRAL] Invalid referral code entered: ${pendingReg.referralCode} - proceeding without referral link`);
+                }
+            } catch (referralError) {
+                // Don't fail registration if referral tracking fails
+                console.error('❌ [REFERRAL] Error processing referral:', referralError.message);
+            }
+        }
 
         // Delete pending registration
         await PendingRegistration.deleteOne({ _id: pendingReg._id });
@@ -953,6 +1003,99 @@ export const purchaseVerifiedStatus = async (req, res) => {
         return res.status(500).json({
             success: false,
             message: 'An error occurred. Please try again.'
+        });
+    }
+};
+
+/**
+ * Get wallet data - /api/user/wallet
+ * Returns balance information for authenticated user
+ */
+export const getWalletData = async (req, res) => {
+    try {
+        const userId = req.userId; // From auth middleware
+
+        const user = await User.findById(userId).select('Balance PendingBalance');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Available balance is the current Balance
+        const availableBalance = user.Balance || 0;
+
+        // Pending balance from bookings
+        const pendingBalance = user.PendingBalance || 0;
+
+        // Total balance = available + pending
+        const totalBalance = availableBalance + pendingBalance;
+
+        console.log(`[WALLET] User ${userId}: Available=₹${availableBalance}, Pending=₹${pendingBalance}, Total=₹${totalBalance}`);
+
+        return res.json({
+            success: true,
+            wallet: {
+                balance: availableBalance,
+                pendingRewards: pendingBalance,
+                totalBalance: totalBalance
+            }
+        });
+
+    } catch (error) {
+        console.error('[WALLET] Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch wallet data'
+        });
+    }
+};
+
+/**
+ * Get referral data - /api/user/referral
+ * Returns user's referral code, count, and coins
+ */
+export const getReferralData = async (req, res) => {
+    try {
+        const userId = req.userId; // From auth middleware
+
+        const user = await User.findById(userId).select('ReferralCode referralCount referralCoins');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // Generate a referral code if user doesn't have one
+        let referralCode = user.ReferralCode;
+        if (!referralCode) {
+            // Generate unique code: RENT + 6 random chars
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            referralCode = 'RENT' + Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+
+            // Save generated code
+            user.ReferralCode = referralCode;
+            await user.save();
+            console.log(`✅ [REFERRAL] Generated code ${referralCode} for user ${userId}`);
+        }
+
+        const referralCount = user.referralCount || 0;
+        const referralCoins = user.referralCoins || 0;
+
+        console.log(`[REFERRAL] User ${userId}: Code=${referralCode}, Count=${referralCount}, Coins=${referralCoins}`);
+
+        return res.json({
+            success: true,
+            referral: {
+                referralCode: referralCode,
+                totalReferrals: referralCount,
+                totalCoins: referralCoins
+            }
+        });
+
+    } catch (error) {
+        console.error('[REFERRAL] Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to fetch referral data'
         });
     }
 };

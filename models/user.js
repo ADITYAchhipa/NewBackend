@@ -69,6 +69,12 @@ const UserSchema = new Schema({
   },
   ReferralCode: { type: String },
 
+  // Referral tracking
+  referredBy: { type: Schema.Types.ObjectId, ref: 'User' }, // User who referred this person
+  referralCount: { type: Number, default: 0 }, // Number of users this person has referred
+  referralCoins: { type: Number, default: 0 }, // Coins earned from referrals
+  referredUsers: [{ type: Schema.Types.ObjectId, ref: 'User' }], // List of users referred by this person
+
   // Chat - list of users this person has messaged
   propertyOwners: [{ type: Schema.Types.ObjectId, ref: 'User' }],
 

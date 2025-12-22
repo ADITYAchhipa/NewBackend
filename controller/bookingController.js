@@ -5,6 +5,7 @@ import Vehicle from '../models/vehicle.js';
 import BlockedRange from '../models/blockedRange.js';
 import mongoose from 'mongoose';
 import { validateDateFormat, normalizeDate, generateDateArray } from '../utils/dateUtils.js';
+import { calculateBookingPrice, validateBookingDates } from '../utils/priceCalculator.js';
 
 /**
  * Get all bookings for the authenticated user
@@ -153,21 +154,19 @@ export const getUserBookings = async (req, res) => {
 
 /**
  * Create a test booking (bypasses actual payment)
- * Used for testing/development purposes only
- * - Creates booking with 'inProgress' status
- * - Adds booking to user's inProgress bookings array
- * - Adds totalPrice to owner's PendingBalance
+ * SECURITY: Recalculates price on backend - NEVER trusts frontend pricing
+ * Validates dates and ensures start < end
  */
 export const createTestBooking = async (req, res) => {
-    console.log('[TEST BOOKING API] Request received');
-    console.log('[TEST BOOKING API] Body:', JSON.stringify(req.body));
+    console.log('[TEST BOOKING] Request received');
+    console.log('[TEST BOOKING] Body:', JSON.stringify(req.body));
 
     try {
         const userId = req.userId; // From auth middleware
-        console.log('[TEST BOOKING API] userId from auth:', userId);
+        console.log('[TEST BOOKING] userId from auth:', userId);
 
         if (!userId) {
-            console.log('[TEST BOOKING API] No userId - returning 401');
+            console.log('[TEST BOOKING] No userId - returning 401');
             return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
 
@@ -176,17 +175,15 @@ export const createTestBooking = async (req, res) => {
             vehicleId,
             startDate,
             endDate,
-            totalPrice,
-            originalPrice,
             couponCode,
             discountAmount
         } = req.body;
 
         // Validate required fields
-        if (!startDate || !endDate || totalPrice === undefined) {
+        if (!startDate || !endDate) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: startDate, endDate, totalPrice'
+                message: 'Missing required fields: startDate, endDate'
             });
         }
 
@@ -197,24 +194,39 @@ export const createTestBooking = async (req, res) => {
             });
         }
 
-        // Get owner ID from property or vehicle
+        // CRITICAL: Validate dates (start < end, not in past)
+        let validatedDates;
+        try {
+            validatedDates = validateBookingDates(startDate, endDate);
+        } catch (dateError) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid dates: ${dateError.message}`
+            });
+        }
+
+        // Fetch the full listing to get pricing info
+        let listing = null;
         let ownerId = null;
         let listingName = '';
+        let listingType = '';
 
         if (propertyId) {
-            const property = await Property.findById(propertyId).select('ownerId name');
-            if (!property) {
+            listing = await Property.findById(propertyId);
+            if (!listing) {
                 return res.status(404).json({ success: false, message: 'Property not found' });
             }
-            ownerId = property.ownerId;
-            listingName = property.name;
+            ownerId = listing.ownerId;
+            listingName = listing.name || listing.title;
+            listingType = 'property';
         } else if (vehicleId) {
-            const vehicle = await Vehicle.findById(vehicleId).select('ownerId name');
-            if (!vehicle) {
+            listing = await Vehicle.findById(vehicleId);
+            if (!listing) {
                 return res.status(404).json({ success: false, message: 'Vehicle not found' });
             }
-            ownerId = vehicle.ownerId;
-            listingName = vehicle.name;
+            ownerId = listing.ownerId;
+            listingName = listing.name || listing.title;
+            listingType = 'vehicle';
         }
 
         if (!ownerId) {
@@ -224,19 +236,40 @@ export const createTestBooking = async (req, res) => {
             });
         }
 
-        // Create the booking with 'pending' status (awaiting owner approval)
+        // CRITICAL: Recalculate price on backend (NEVER trust frontend)
+        let priceCalculation;
+        try {
+            priceCalculation = calculateBookingPrice(listing, startDate, endDate);
+            console.log('[TEST BOOKING] Price calculation:', priceCalculation);
+        } catch (priceError) {
+            return res.status(400).json({
+                success: false,
+                message: `Pricing error: ${priceError.message}`
+            });
+        }
+
+        // Apply coupon discount if provided
+        let finalPrice = priceCalculation.totalPrice;
+        const appliedDiscount = discountAmount || 0;
+
+        if (appliedDiscount > 0) {
+            finalPrice = Math.max(0, finalPrice - appliedDiscount);
+            console.log(`[TEST BOOKING] Applied discount: ₹${appliedDiscount}, Final price: ₹${finalPrice}`);
+        }
+
+        // Create the booking with recalculated price
         const booking = new Booking({
             userId,
             ownerId,
             propertyId: propertyId || undefined,
             vehicleId: vehicleId || undefined,
-            startDate: new Date(startDate),
-            endDate: new Date(endDate),
-            totalPrice,
-            originalPrice: originalPrice || totalPrice,
+            startDate: validatedDates.startDate,
+            endDate: validatedDates.endDate,
+            totalPrice: finalPrice,
+            originalPrice: priceCalculation.totalPrice,
             couponCode: couponCode || undefined,
-            discountAmount: discountAmount || 0,
-            status: 'pending', // Changed from 'inProgress' - bookings need owner approval
+            discountAmount: appliedDiscount,
+            status: 'pending', // Awaiting owner approval
             paymentStatus: 'pending' // Payment pending for test mode
         });
 
@@ -248,13 +281,11 @@ export const createTestBooking = async (req, res) => {
             $inc: { TotalBookings: 1 }
         });
 
-        // Add totalPrice to owner's PendingBalance
-        await User.findByIdAndUpdate(ownerId, {
-            $inc: { PendingBalance: totalPrice }
-        });
-
         console.log(`[TEST BOOKING] Created booking ${booking._id} for user ${userId}`);
-        console.log(`[TEST BOOKING] Added ${totalPrice} to owner ${ownerId} PendingBalance`);
+        console.log(`[TEST BOOKING] Total: ₹${finalPrice} (${validatedDates.totalDays} days)`);
+        console.log(`[TEST BOOKING] Pricing: ${priceCalculation.breakdown.calculationMethod}`);
+
+        // NOTE: PendingBalance will be added when owner APPROVES the booking (not here)
 
         res.status(201).json({
             success: true,
@@ -264,14 +295,18 @@ export const createTestBooking = async (req, res) => {
                 listingName,
                 startDate: booking.startDate,
                 endDate: booking.endDate,
+                totalDays: validatedDates.totalDays,
                 totalPrice: booking.totalPrice,
+                originalPrice: booking.originalPrice,
+                discount: appliedDiscount,
+                priceBreakdown: priceCalculation.breakdown,
                 status: booking.status,
                 paymentStatus: booking.paymentStatus
             }
         });
 
     } catch (error) {
-        console.error('Error creating test booking:', error);
+        console.error('[TEST BOOKING] Error:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to create test booking',
@@ -413,7 +448,7 @@ export const cancelBooking = async (req, res) => {
 };
 
 /**
- * Approve booking (Owner only) - Atomic transaction with date blocking
+ * Approve booking (Owner only) - Atomic operation with date blocking
  * POST /api/owner/bookings/:id/approve
  */
 export const approveBooking = async (req, res) => {
@@ -436,15 +471,9 @@ export const approveBooking = async (req, res) => {
             return res.status(400).json({ success: false, message: `Cannot approve booking with status: ${booking.status}` });
         }
 
-        // Validate and normalize dates
-        let bookingStart, bookingEnd;
-        try {
-            bookingStart = normalizeDate(booking.startDate);
-            bookingEnd = normalizeDate(booking.endDate);
-        } catch (dateError) {
-            console.error('[APPROVE] Date error:', dateError.message, { start: booking.startDate, end: booking.endDate });
-            return res.status(400).json({ success: false, message: `Invalid booking dates: ${dateError.message}` });
-        }
+        // Dates from database are already Date objects - just convert to strings for BlockedRange
+        const bookingStart = normalizeDate(booking.startDate);
+        const bookingEnd = normalizeDate(booking.endDate);
 
         const listingType = booking.propertyId ? 'property' : 'vehicle';
         const listingId = booking.propertyId || booking.vehicleId;
@@ -488,7 +517,7 @@ export const approveBooking = async (req, res) => {
 
         res.status(200).json({ success: true, message: 'Booking approved and dates blocked' });
     } catch (error) {
-        console.error('❌ [APPROVE ERROR]', error.message);
+        console.error('❌ [APPROVE ERROR]', error.message, error);
         res.status(400).json({ success: false, message: error.message });
     }
 };
