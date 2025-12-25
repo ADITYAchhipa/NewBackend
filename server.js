@@ -2,6 +2,7 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
+import compression from 'compression';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import connectDB from './config/db.js';
@@ -87,6 +88,12 @@ io.on('connection', (socket) => {
 });
 
 app.use(express.json({ limit: '10mb' })); // parse JSON with larger limit for images
+
+// Response compression (gzip/deflate) - significant bandwidth savings
+app.use(compression({
+    level: 6, // Balance compression ratio vs CPU usage
+    threshold: 1024, // Only compress responses > 1KB  
+}));
 
 // SECURITY: Explicit CORS configuration (no wildcards!)
 // Never use origin: true in production - prevents credential theft

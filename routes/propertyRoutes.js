@@ -1,6 +1,6 @@
 // routes/propertyRoutes.js
 import express from 'express';
-import { getPropertyById } from '../controller/propertyController.js';
+import { getPropertyById, getSimilarProperties } from '../controller/propertyController.js';
 import { searchItems } from '../controller/propertyController.js';
 import { validateObjectId } from '../middleware/validateObjectId.js';
 
@@ -11,6 +11,7 @@ console.log("Property Routes Loaded");
 // Get single property by ID
 // Example: /api/property/507f1f77bcf86cd799439011
 propertyRouter.get('/featured', searchItems);
+propertyRouter.get('/:id/similar', validateObjectId('id'), getSimilarProperties);
 propertyRouter.get('/:id', validateObjectId('id'), getPropertyById);
 
 

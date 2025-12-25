@@ -9,12 +9,12 @@ import {
   createNotification
 } from '../controller/notificationController.js';
 import { validateObjectId } from '../middleware/validateObjectId.js';
+import authUser from '../middleware/authUser.js'; // Import auth middleware
 
 const router = express.Router();
 
-// Note: Add your auth middleware here to protect these routes
-// e.g., import authMiddleware from '../middleware/auth.js';
-// router.use(authMiddleware);
+// Apply auth middleware to all notification routes
+router.use(authUser);
 
 // GET /api/notifications - Get user notifications (with pagination)
 router.get('/', getUserNotifications);

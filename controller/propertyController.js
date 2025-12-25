@@ -1,6 +1,7 @@
 // controller/propertyController.js
 import Property from '../models/property.js';
-
+import { getSimilarProperties as findSimilarProperties } from '../utils/recommendationAlgorithm.js';
+import { setCachePublic } from '../utils/cacheHeaders.js';
 
 
 export const searchItems = async (req, res) => {
@@ -66,6 +67,9 @@ export const searchItems = async (req, res) => {
 
     console.log(`✅ Found ${results.length} featured properties (page ${pageNum}, excluded: ${excludeIdsArray.length})`);
 
+    // Set public cache headers (5 minutes)
+    setCachePublic(res, 300);
+
     res.status(200).json({
       success: true,
       count: results.length,
@@ -102,6 +106,9 @@ export const getPropertyById = async (req, res) => {
     property.meta.views = (property.meta.views || 0) + 1;
     await property.save();
 
+    // Set public cache headers (shorter TTL for individual properties: 2 minutes)
+    setCachePublic(res, 120);
+
     return res.json({
       success: true,
       property
@@ -110,5 +117,59 @@ export const getPropertyById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching property:', error);
     res.json({ success: false, message: error.message });
+  }
+};
+
+// Get similar properties based on smart recommendation algorithm
+export const getSimilarProperties = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 6 } = req.query;
+
+    console.log(`🔍 Finding similar properties for: ${id}`);
+
+    if (!id) {
+      return res.json({ success: false, message: 'Property ID is required' });
+    }
+
+    // Get the base property
+    const baseProperty = await Property.findById(id);
+    if (!baseProperty) {
+      return res.json({ success: false, message: 'Property not found' });
+    }
+
+    console.log(`Base property: ${baseProperty.title}, category: ${baseProperty.category}`);
+
+    // Get all available properties - be lenient with filters to get more results
+    const filter = {
+      available: true,
+      status: 'active',
+      // Don't filter by categoryType - let the algorithm score by category instead
+    };
+
+    const allProperties = await Property.find(filter)
+      .select('_id title images price rating city state category categoryType bedrooms bathrooms furnished amenities ownerId')
+      .limit(150) // Increase limit for better matches
+      .lean();
+
+    console.log(`Found ${allProperties.length} potential matches`);
+
+    // Use recommendation algorithm to find similar properties
+    const similarWithScores = findSimilarProperties(baseProperty.toObject(), allProperties, parseInt(limit));
+
+    // Extract just the properties (without scores for client)
+    const similar = similarWithScores.map(item => item.property);
+
+    console.log(`✅ Returning ${similar.length} similar properties`);
+
+    return res.json({
+      success: true,
+      count: similar.length,
+      results: similar
+    });
+
+  } catch (error) {
+    console.error('Error fetching similar properties:', error);
+    return res.json({ success: false, message: error.message });
   }
 };

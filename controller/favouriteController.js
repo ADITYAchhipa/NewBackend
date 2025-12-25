@@ -2,6 +2,7 @@ import User from '../models/user.js';
 import Property from '../models/property.js';
 import Vehicle from '../models/vehicle.js';
 import { FAVOURITES_USER_FIELDS } from '../utils/projections.js';
+import { setCachePrivate } from '../utils/cacheHeaders.js';
 
 /**
  * Add property to user's favourites
@@ -544,6 +545,9 @@ export const getUserFavouriteIds = async (req, res) => {
     // Return just the IDs as strings
     const propertyIds = (user.favourites?.properties || []).map(id => id.toString());
     const vehicleIds = (user.favourites?.vehicles || []).map(id => id.toString());
+
+    // Set private cache headers (user-specific data: 5 minutes)
+    setCachePrivate(res, 300);
 
     res.json({
       success: true,

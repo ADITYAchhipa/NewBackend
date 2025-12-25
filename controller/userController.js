@@ -50,7 +50,7 @@ export const register = async (req, res) => {
 
         const hashedPasword = await bcrypt.hash(password, 10)
 
-        const user = await User.create({ name, email, password: hashedPasword, phone, ReferralCode: referralCode })
+        const user = await User.create({ name, email, password: hashedPasword, phone, ReferralCode: referralCode, Country: 'India' })
 
         // REFERRAL TRACKING: Same logic as in new registration flow
         if (referralCode) {
@@ -402,7 +402,8 @@ export const verifyAndRegister = async (req, res) => {
             phone: pendingReg.phone,
             password: pendingReg.hashedPassword,
             verify: true,
-            ReferralCode: pendingReg.referralCode
+            ReferralCode: pendingReg.referralCode,
+            Country: 'India'
         });
 
         // REFERRAL TRACKING: Increment referrer's count if valid code was provided

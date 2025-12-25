@@ -1,6 +1,14 @@
 import { Resend } from 'resend';
 import 'dotenv/config';
 
+// Validate required environment variables
+if (!process.env.RESEND_API_KEY) {
+  console.error('\n❌ ERROR: RESEND_API_KEY is missing from environment variables!');
+  console.error('📝 Please check ENV_SETUP.md for setup instructions.');
+  console.error('🔗 Get your API key from: https://resend.com/api-keys\n');
+  throw new Error('RESEND_API_KEY is required. Please add it to your .env file.');
+}
+
 // Initialize Resend with API key from environment
 const resend = new Resend(process.env.RESEND_API_KEY);
 

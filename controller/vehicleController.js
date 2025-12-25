@@ -1,7 +1,8 @@
 // controller/vehicleController.js
 import mongoose from 'mongoose';
 import Vehicle from '../models/vehicle.js';
-
+import { getSimilarVehicles as findSimilarVehicles } from '../utils/recommendationAlgorithm.js';
+import { setCachePublic } from '../utils/cacheHeaders.js';
 
 export const searchItems = async (req, res) => {
   try {
@@ -69,6 +70,9 @@ export const searchItems = async (req, res) => {
 
     console.log(`✅ Found ${results.length} featured vehicles (page ${pageNum}, excluded: ${excludeIdsArray.length})`);
 
+    // Set public cache headers (5 minutes)
+    setCachePublic(res, 300);
+
     res.status(200).json({
       success: true,
       count: results.length,
@@ -84,6 +88,7 @@ export const searchItems = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 // Get vehicle by ID
 export const getVehicleById = async (req, res) => {
   try {
@@ -100,6 +105,9 @@ export const getVehicleById = async (req, res) => {
       return res.json({ success: false, message: 'Vehicle not found' });
     }
 
+    // Set public cache headers (2 minutes)
+    setCachePublic(res, 120);
+
     return res.json({
       success: true,
       vehicle
@@ -108,5 +116,58 @@ export const getVehicleById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching vehicle:', error);
     res.json({ success: false, message: error.message });
+  }
+};
+
+// Get similar vehicles based on smart recommendation algorithm
+export const getSimilarVehicles = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { limit = 6 } = req.query;
+
+    console.log(`🔍 Finding similar vehicles for: ${id}`);
+
+    if (!id) {
+      return res.json({ success: false, message: 'Vehicle ID is required' });
+    }
+
+    // Get the base vehicle
+    const baseVehicle = await Vehicle.findById(id);
+    if (!baseVehicle) {
+      return res.json({ success: false, message: 'Vehicle not found' });
+    }
+
+    console.log(`Base vehicle: ${baseVehicle.make} ${baseVehicle.model}, type: ${baseVehicle.vehicleType}`);
+
+    // Get all available vehicles
+    const filter = {
+      available: true,
+      status: 'active',
+    };
+
+    const allVehicles = await Vehicle.find(filter)
+      .select('_id make model year photos price rating location vehicleType seats transmission fuelType ownerId')
+      .limit(150) // Increase limit for better matches
+      .lean();
+
+    console.log(`Found ${allVehicles.length} potential matches`);
+
+    // Use recommendation algorithm to find similar vehicles
+    const similarWithScores = findSimilarVehicles(baseVehicle.toObject(), allVehicles, parseInt(limit));
+
+    // Extract just the vehicles (without scores for client)
+    const similar = similarWithScores.map(item => item.vehicle);
+
+    console.log(`✅ Returning ${similar.length} similar vehicles`);
+
+    return res.json({
+      success: true,
+      count: similar.length,
+      results: similar
+    });
+
+  } catch (error) {
+    console.error('Error fetching similar vehicles:', error);
+    return res.json({ success: false, message: error.message });
   }
 };
